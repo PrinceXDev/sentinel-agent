@@ -1,0 +1,23 @@
+{
+  "name": "sentinel-agent-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Intro/outro cards for the demo recording, matching the app's own design tokens. Deliberately outside the main npm workspace — this is a submission asset, not part of the shipped product, so it should never affect `npm install` at the repo root.",
+  "scripts": {
+    "preview": "remotion studio src/index.ts",
+    "render:intro": "remotion render src/index.ts Intro out/intro.mp4",
+    "render:outro": "remotion render src/index.ts Outro out/outro.mp4",
+    "render": "npm run render:intro && npm run render:outro"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.517",
+    "@remotion/cli": "^4.0.517",
+    "@remotion/google-fonts": "^4.0.517"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.7",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "hook",
+    "seconds": 14,
+    "text": "When checkout latency triples in production, someone has to find out why, prove it, and fix it — usually under time pressure, jumping between a dashboard, a deploy log, and a terminal. Sentinel agent does the investigation and the proof. It does not do the fix without a human."
+  },
+  {
+    "id": "brief",
+    "seconds": 11,
+    "text": "Here is the incident it's been handed. Checkout latency has risen sharply, and the agent is told to investigate, compute the real magnitude, and only prepare a fix if the evidence actually supports one."
+  },
+  {
+    "id": "tools",
+    "seconds": 16,
+    "text": "It starts reaching real systems immediately. These are genuine calls against a real tool server — not simulated in the frontend. It pulls the incident, the deployment history, and the diff of the most recent change."
+  },
+  {
+    "id": "subagents",
+    "seconds": 16,
+    "text": "Three sub agents are dispatched in parallel, each investigating a different angle — performance, deployment timing, and the code itself. Each runs in its own context, and only its conclusion comes back to the root agent."
+  },
+  {
+    "id": "sandbox",
+    "seconds": 15,
+    "text": "This is the sandbox. The agent writes its own Python to compute the actual regression from raw metrics — not a number it read off a table, a number it calculated itself."
+  },
+  {
+    "id": "gate",
+    "seconds": 18,
+    "text": "And here is the moment the entire product exists for. It has finished investigating, and it has a fix ready — but it stops here. It shows the exact tool call, the exact arguments, and the mechanism it found, and it waits for a human."
+  },
+  {
+    "id": "approve",
+    "seconds": 10,
+    "text": "The evidence is a real mechanism, not a guess based on timing, so I'm approving it. Declining was just as available — the agent would have simply stopped."
+  },
+  {
+    "id": "verify",
+    "seconds": 16,
+    "text": "The rollback runs, and the agent checks its own work — service health flips back to healthy. And this line, on the right, is not the agent's report. It's the estate's own independent log of what actually changed."
+  },
+  {
+    "id": "close",
+    "seconds": 10,
+    "text": "Real tools. A real sandbox. Real delegation. And a real approval gate that held until a human clicked it. Built on TrueForge."
+  }
+]

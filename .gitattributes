@@ -1,0 +1,23 @@
+# Normalise line endings so the repository is byte-identical regardless of who
+# checked it out.
+#
+# Without this, a Windows checkout writes CRLF into the working tree while Biome
+# is configured `lineEnding: "lf"` — so every file Biome touches shows as
+# modified even when its content is unchanged. That turned a 14-file change into
+# a 49-file diff once already, which is exactly the noise that makes a review
+# trail hard to read.
+* text=auto eol=lf
+
+# Binary and generated files git should never try to normalise or diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.mp4 binary
+
+# Lockfiles are generated. Keep them out of diffs and out of language stats.
+package-lock.json -diff linguist-generated=true

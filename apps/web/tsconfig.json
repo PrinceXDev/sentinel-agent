@@ -1,0 +1,46 @@
+{
+	"compilerOptions": {
+		"target": "ES2023",
+		"lib": ["dom", "dom.iterable", "ES2023"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		// Note: `exactOptionalPropertyTypes` is enabled in apps/mcp-server but not
+		// here. React and Next's generated types are not authored for it, and the
+		// resulting friction lands on every component rather than on one adapter,
+		// which is the opposite of the isolation that made it worth keeping there.
+		"noEmit": true,
+		"allowJs": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"incremental": true,
+		"plugins": [
+			{
+				"name": "next"
+			}
+		],
+		"paths": {
+			"@/*": ["./src/*"],
+			// Repo-root files this app reads. Only `agent/` is exposed, so the agent
+			// spec can be imported as a static module instead of read with `fs` —
+			// which Next traces as "this route touches the filesystem" and responds to
+			// by bundling the entire project into the server output.
+			"@agent/*": ["../../agent/*"]
+		}
+	},
+	"include": [
+		"next-env.d.ts",
+		"**/*.ts",
+		"**/*.tsx",
+		".next/types/**/*.ts",
+		".next/dev/types/**/*.ts"
+	],
+	"exclude": ["node_modules", ".next"]
+}

@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/*
+ * sentinel-agent design tokens.
+ *
+ * A command-centre palette: near-black with a blue bias, one restrained steel
+ * accent, and semantic colours kept strictly separate from it.
+ *
+ * The important rule is that **amber appears in exactly one place** — the
+ * approval gate. Nothing else in the product uses it. That makes the moment the
+ * agent stops and asks visually unique rather than one alert among many, which
+ * is the whole point of the product.
+ */
+@theme {
+  --color-ground: #0a0d11;
+  --color-surface: #12171d;
+  --color-raised: #171f27;
+  --color-line: #202a33;
+  --color-line-strong: #2c3946;
+
+  --color-ink: #e4e9ed;
+  --color-muted: #8695a3;
+  --color-dim: #5d6b78;
+
+  /* Restrained brand accent. Not a status colour. */
+  --color-steel: #5b9dbf;
+  --color-steel-dim: #2f5568;
+
+  /* Semantic. */
+  --color-ok: #4fb286;
+  --color-danger: #d4614e;
+  /* Reserved for the approval gate. Do not use elsewhere. */
+  --color-gate: #e0a33e;
+  --color-gate-dim: #4a3717;
+
+  --font-sans:
+    var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Digits that line up in columns — timestamps, latencies, counts. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Uppercase micro-labels used throughout the chrome. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-dim);
+}
+
+/* Subtle grid, so large empty panels read as instrument surface, not void. */
+.gridfield {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-line) 45%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-line) 45%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 32px 32px;
+}
+
+/*
+ * The reduced-motion reset is the one place !important is correct: it has to beat
+ * every animation declaration in the sheet, including utility classes generated
+ * later in the cascade. Biome's suggested fix is to delete it, which would
+ * silently break the accessibility guarantee — so the rule is suppressed here
+ * rather than disabled globally.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: must override every animation declaration, including generated utilities */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must override every animation declaration, including generated utilities */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must override every transition declaration, including generated utilities */
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Live indicator. One pulse in the product, on the status dot. */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+::selection {
+  background: var(--color-steel-dim);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-steel);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Scrollbars that belong to the surface rather than the OS. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}

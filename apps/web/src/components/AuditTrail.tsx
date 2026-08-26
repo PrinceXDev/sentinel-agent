@@ -15,6 +15,7 @@
  */
 
 import type { AuditEntry } from '@/lib/estate';
+import { formatClock } from '@/lib/formatClock';
 
 interface AuditTrailProps {
   entries: AuditEntry[] | null;
@@ -24,7 +25,7 @@ interface AuditTrailProps {
 
 export function AuditTrail({ entries, error, loading }: AuditTrailProps) {
   if (error) {
-    return <p className="text-danger text-xs leading-relaxed">{error}</p>;
+    return <p className="break-words text-danger text-xs leading-relaxed">{error}</p>;
   }
 
   if (loading || entries === null) {
@@ -45,7 +46,7 @@ export function AuditTrail({ entries, error, loading }: AuditTrailProps) {
       {entries.map((entry) => (
         <li key={`${entry.at}:${entry.tool}`} className="flex flex-col gap-0.5">
           <div className="flex items-baseline gap-2">
-            <span className="tnum font-mono text-[0.62rem] text-dim">{clock(entry.at)}</span>
+            <span className="tnum font-mono text-[0.62rem] text-dim">{formatClock(entry.at)}</span>
             <code className="font-mono text-[0.68rem] text-ok">{entry.tool}</code>
           </div>
           <p className="text-[0.7rem] text-muted leading-snug">{entry.summary}</p>
@@ -54,10 +55,4 @@ export function AuditTrail({ entries, error, loading }: AuditTrailProps) {
       ))}
     </ol>
   );
-}
-
-function clock(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toISOString().slice(11, 19);
 }

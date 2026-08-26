@@ -39,7 +39,7 @@ export function ApprovalGate({ approvals, busy, onApprove, onDeny }: ApprovalGat
 
   return (
     <section aria-labelledby="gate-heading" className="border-gate/40 border-y bg-gate/[0.04]">
-      <div className="flex items-center gap-2.5 px-5 pt-4">
+      <div className="flex items-center gap-2.5 px-3 pt-4 sm:px-5">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-gate breathe" />
         <h2
           id="gate-heading"
@@ -52,7 +52,7 @@ export function ApprovalGate({ approvals, busy, onApprove, onDeny }: ApprovalGat
         )}
       </div>
 
-      <p className="max-w-prose px-5 pt-2 text-muted text-sm">
+      <p className="max-w-prose px-3 pt-2 text-muted text-sm sm:px-5">
         sentinel-agent has finished investigating and prepared an action that changes production
         state. It will not run until you authorise it.
       </p>

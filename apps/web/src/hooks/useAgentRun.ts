@@ -289,7 +289,20 @@ export function useAgentRun(): UseAgentRun {
         });
         await consume(stream, session.id);
       } catch (error) {
-        fail(describeError(error));
+        // `sessions.create` is this hook's first mutating call, so it is the
+        // most common place an operator token refusal is ever seen — missing
+        // this check here (present in `respond`/`cancel`) is what let the raw
+        // 403 fall through to the generic error state instead of the token
+        // prompt. Reset to 'idle' rather than leaving 'starting': the operator
+        // has done nothing wrong, and the Investigate button must re-enable
+        // once they've entered a token.
+        if (isOperatorTokenRefusal(error)) {
+          setTokenRefusal(describeError(error));
+          stateRef.current.status = 'idle';
+          bump();
+        } else {
+          fail(describeError(error));
+        }
       } finally {
         setBusy(false);
       }

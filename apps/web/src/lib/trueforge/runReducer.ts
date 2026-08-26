@@ -319,7 +319,39 @@ export function reduce(state: RunState, event: AnyEvent, index: EventIndex): Run
 
     case 'turn.done': {
       const e = stored as TrueForgeApi.TurnDoneEvent;
-      const required = (e.state as { requiredActions?: unknown[] } | undefined)?.requiredActions;
+      const eventState = e.state as
+        | { status: string; requiredActions?: unknown[]; message?: string }
+        | undefined;
+
+      // The turn's terminal state can be `error`, not only `done` or a paused
+      // `done` with pending actions — a mid-turn model-provider failure (a rate
+      // limit, an exhausted credit balance) ends the turn this way. The prior
+      // version of this reducer only ever distinguished "still blocked" from
+      // "finished", so an errored turn rendered identically to a clean success:
+      // the status bar said "Complete" in green over a run that had in fact
+      // failed partway through. An operator reading that would trust a result
+      // that was never actually produced — the one failure mode this reducer
+      // exists to prevent.
+      if (eventState?.status === 'error') {
+        state.status = 'error';
+        state.error = eventState.message ?? 'The turn ended in an error with no message.';
+        // A distinct kind, not `turn_done` with a different label: `turn_done`
+        // renders with the timeline's green "DONE" tag, which would put the
+        // exact same success signal on a failed run that this fix exists to
+        // remove.
+        push(state, {
+          id: e.id,
+          at,
+          kind: 'turn_error',
+          threadId: e.threadId ?? null,
+          label: 'Turn failed',
+          detail: state.error,
+          toolCallId: null,
+        });
+        return state;
+      }
+
+      const required = eventState?.requiredActions;
 
       // A paused turn also reports `done` — the distinction is whether anything
       // is still required. Treating `done` as finished here would clear the

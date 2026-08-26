@@ -39,7 +39,7 @@ export function OperatorTokenPrompt({ reason, onSaved, onDismiss }: OperatorToke
   return (
     <section
       aria-labelledby="operator-token-heading"
-      className="border-danger/40 border-y bg-danger/[0.04] px-5 py-4"
+      className="border-danger/40 border-y bg-danger/[0.04] px-3 py-4 sm:px-5"
     >
       <h2
         id="operator-token-heading"
@@ -48,7 +48,7 @@ export function OperatorTokenPrompt({ reason, onSaved, onDismiss }: OperatorToke
         Operator token required
       </h2>
 
-      <p className="mt-2 max-w-prose text-muted text-sm">{reason}</p>
+      <p className="mt-2 max-w-prose break-words text-muted text-sm">{reason}</p>
 
       <p className="mt-2 max-w-prose text-dim text-xs">
         Read-only investigation needs no token. Only actions that change state — approving a

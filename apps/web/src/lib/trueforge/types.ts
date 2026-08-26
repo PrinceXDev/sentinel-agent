@@ -86,7 +86,8 @@ export type TimelineKind =
   | 'sandbox_created'
   | 'approval_required'
   | 'mcp_auth_required'
-  | 'turn_done';
+  | 'turn_done'
+  | 'turn_error';
 
 export interface TimelineEntry {
   /** Event id. Monotonic ULID, so insertion order is chronological. */

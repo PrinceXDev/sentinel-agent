@@ -191,14 +191,48 @@ To confirm annotations reach the wire:
 curl -s -X POST http://localhost:8940/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
+### Preflight
+
+Before the first run:
+
+```bash
+npm run doctor
+```
+
+A run needs five things configured across two processes and the harness UI — a
+model, a sandbox provider, the `sentinel-ops` connector, the `incident-response`
+skill, and an operator token. Any one missing surfaces as a 422 or 403 *mid-run*,
+worded from the harness's point of view rather than yours. `doctor` checks all
+five up front and tells you which is missing and how to fix it.
+
+It also re-verifies the safety model live: it calls `tools/list` on the running
+ops server and fails if any tool is unannotated, because an unannotated tool is
+exempt from approval — the one failure mode that looks like success.
+
+```
+✓ .env file                present
+✓ SENTINEL_MODEL           anthropic/claude-sonnet-4-6
+✓ SENTINEL_UI_TOKEN        set (48 chars)
+✓ ops MCP server           sentinel-ops v0.1.0 on http://127.0.0.1:8940
+✓ tool annotations         10 tools, 0 unannotated, 3 approval-gated
+✗ sandbox provider         none configured — the sandbox AND skills will both fail
+  → Harness UI → Settings → Sandbox providers → Daytona + API key.
+```
+
+Exits non-zero when anything is blocking, so it composes into a script.
+
 ### Scripts
 
 | Command             | Does                                                  |
 | ------------------- | ----------------------------------------------------- |
+| `npm run doctor`    | Preflight: config, connectivity, live annotation check |
 | `npm run dev:mcp`   | Ops MCP server, watch mode                            |
-| `npm test`          | Full suite                                            |
-| `npm run typecheck` | `tsc --noEmit`, strict + `exactOptionalPropertyTypes` |
-| `npm run format`    | Prettier                                              |
+| `npm run dev:web`   | Next.js UI on `127.0.0.1:3000`                        |
+| `npm test`          | Full suite (108 tests)                                |
+| `npm run typecheck` | `tsc --noEmit`, strict across both workspaces         |
+| `npm run lint`      | Biome lint                                            |
+| `npm run check`     | Biome lint + format, writing fixes                    |
+| `npm run ci`        | `biome ci` + typecheck + tests — what CI runs          |
 
 ## Environment variables
 

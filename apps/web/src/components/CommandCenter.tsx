@@ -55,7 +55,13 @@ export function CommandCenter() {
   const canStart = status !== 'running' && status !== 'awaiting_approval' && !busy;
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col lg:h-dvh">
+      {/*
+        Sticky rather than shrink-0-in-a-fixed-viewport: below `lg` the page is
+        allowed to grow and scroll as one normal document (see the row wrapper
+        below), so the header needs `sticky` to stay visible as the operator
+        scrolls past the timeline toward the control panel underneath it.
+      */}
       <TopBar
         status={status}
         sessionId={state.sessionId}
@@ -63,11 +69,22 @@ export function CommandCenter() {
         toolCallCount={state.toolCalls.size}
       />
 
-      <div className="flex min-h-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col">
+      {/*
+        The layout that produced the mobile bug: a plain `flex` row put a fixed
+        `w-80` sidebar (ControlPanel) beside a `min-w-0 flex-1` main pane with no
+        breakpoint at all, so on a 375px phone the sidebar's 320px demand left
+        main a sliver — which is exactly what rendered.
+        Below `lg` this is a single column and the whole page scrolls together;
+        nothing here gets its own internal scroll container, which also avoids
+        the double-scrollbar feel nested scroll areas produce on touch screens.
+        At `lg`+ it becomes the original two-pane, each-scrolls-independently
+        layout.
+      */}
+      <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
+        <main className="flex w-full flex-col lg:min-w-0 lg:flex-1">
           <IncidentBrief state={estate.state} error={estate.error} />
 
-          <div className="shrink-0 border-line border-b px-5 py-3">
+          <div className="shrink-0 border-line border-b px-3 py-3 sm:px-5">
             <div className="flex items-baseline justify-between gap-4">
               <span className="eyebrow">brief for the agent</span>
               {state.sessionId && (
@@ -110,7 +127,9 @@ export function CommandCenter() {
                 </button>
               )}
 
-              <p className="ml-auto text-dim text-xs">
+              {/* Non-essential microcopy: dropped below `sm` rather than wrapped, so
+                  it cannot push onto its own line under the buttons on a phone. */}
+              <p className="hidden text-dim text-xs sm:ml-auto sm:block">
                 Read-only tools run freely. Anything that changes production stops here.
               </p>
             </div>
@@ -131,7 +150,10 @@ export function CommandCenter() {
             onDeny={(id, reason) => void run.deny(id, reason)}
           />
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* `lg:overflow-y-auto` — the timeline scrolls on its own only once the
+              two-pane desktop layout is active. Below `lg` it just flows in the
+              page along with everything else. */}
+          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <Timeline
               entries={state.timeline}
               rootThreadId={state.rootThreadId}

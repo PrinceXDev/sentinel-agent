@@ -82,16 +82,24 @@ function record(state, label, detail, fix) {
 // ── Checks ──────────────────────────────────────────────────────────────────
 
 function checkEnv(env, envFound) {
-  if (!envFound) {
-    record(
-      'fail',
-      '.env file',
-      'not found at the repository root',
-      'cp .env.example .env  — then fill in SENTINEL_MODEL and SENTINEL_UI_TOKEN',
-    );
-    return;
-  }
-  record('ok', '.env file', 'present');
+  // `env` here is already the merged view (file + real process.env — see the
+  // call site), so a missing file does not mean missing values: CI, a shell
+  // profile, or `docker run -e` can supply every variable below with no `.env`
+  // on disk at all. This used to `return` immediately on a missing file,
+  // which meant every check below it — including whether SENTINEL_UI_TOKEN is
+  // set at all — silently never ran, so those checks always looked passing by
+  // omission rather than by verification. File presence is informational now;
+  // it no longer gates whether the merged values get checked.
+  record(
+    envFound ? 'ok' : 'warn',
+    '.env file',
+    envFound
+      ? 'present'
+      : 'not found — checking process environment for the required values instead',
+    envFound
+      ? undefined
+      : 'cp .env.example .env  — then fill in SENTINEL_MODEL and SENTINEL_UI_TOKEN, or export them directly.',
+  );
 
   if (env.SENTINEL_MODEL) {
     // provider/model is the harness's required shape; a bare model id 422s with
@@ -139,7 +147,12 @@ function checkEnv(env, envFound) {
 
 async function checkOpsServer(env) {
   const port = env.OPS_MCP_PORT || '8940';
-  const base = `http://127.0.0.1:${port}`;
+  // Was hardcoded to 127.0.0.1, silently ignoring OPS_MCP_HOST — so probing a
+  // deliberately non-default host (see docs/architecture.md § Trust model)
+  // would always report "not reachable" against the wrong address instead of
+  // reflecting the config actually in use.
+  const host = env.OPS_MCP_HOST || '127.0.0.1';
+  const base = `http://${host}:${port}`;
 
   try {
     const health = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(3000) });
@@ -208,8 +221,12 @@ async function checkOpsServer(env) {
       );
     }
   } catch (error) {
+    // A warning here would mean this doctor exits 0 on a config it never
+    // actually verified — the annotation check exists specifically to catch
+    // an unannotated destructive tool that runs with no approval prompt, and
+    // "could not verify" is not evidence that isn't happening.
     record(
-      'warn',
+      'fail',
       'tool annotations',
       `could not verify (${error instanceof Error ? error.message : error})`,
       'The server answered /healthz but not tools/list. Check its logs.',
@@ -271,14 +288,27 @@ async function checkHarness(env) {
   await checkSkill(client);
 }
 
+/**
+ * Look for the harness's own confirmation that it is running a local sandbox
+ * fallback, rather than assuming one from `process.platform` alone.
+ *
+ * `wsl-up.sh` redirects the harness's stdout to this fixed path, so when
+ * doctor runs in that same environment the evidence is directly readable.
+ * Returns `null` — not `false` — when the log cannot be read, so the caller
+ * can tell "confirmed absent" apart from "unable to check" instead of
+ * collapsing both into the same platform guess this replaces.
+ */
+function localSandboxFallbackConfirmed() {
+  try {
+    const log = readFileSync('/tmp/tf-harness.log', 'utf8');
+    return log.includes('Local sandbox fallback is available');
+  } catch {
+    return null;
+  }
+}
+
 async function checkSandbox(client) {
   // One provider per tenant, hence get() rather than list().
-  //
-  // No configured provider is not unconditionally fatal: on Linux/macOS,
-  // TrueForge falls back to a LocalSandboxProvider (visible in the harness's
-  // own startup log as "Local sandbox fallback is available"). It is Daytona's
-  // catalog entry that is exclusive, not the runtime's only option — so this
-  // is reported as a warning with the platform-appropriate fix, not a blocker.
   try {
     const { data } = await client.settings.sandboxProviders.get();
     const type = data?.manifest?.type ?? data?.type;
@@ -287,19 +317,46 @@ async function checkSandbox(client) {
       return;
     }
   } catch {
-    // Falls through to the fallback-aware warning below.
+    // Falls through to the fallback check below.
   }
 
-  const fallbackAvailable = process.platform === 'linux' || process.platform === 'darwin';
+  // No configured provider is not unconditionally fatal: on Linux/macOS,
+  // TrueForge falls back to a LocalSandboxProvider. Daytona's catalog entry
+  // being the only *configurable* provider does not mean it is the only
+  // *runtime* option — but that fallback needs to be confirmed from the
+  // harness's own log, not inferred from `process.platform`, which is true of
+  // the machine running this script and says nothing about whether the
+  // harness process actually logged that fallback active.
+  const confirmed = localSandboxFallbackConfirmed();
+
+  if (confirmed === true) {
+    record(
+      'ok',
+      'sandbox provider',
+      'none configured — local fallback confirmed active in harness log',
+    );
+    return;
+  }
+
+  if (confirmed === false) {
+    record(
+      'fail',
+      'sandbox provider',
+      'none configured, and the harness log does not show the local fallback active',
+      'Register Daytona (Settings → Sandbox providers), or check why the fallback did not start.',
+    );
+    return;
+  }
+
+  // confirmed === null: the log was not readable from here (a different
+  // machine, a different log path, doctor run outside the environment
+  // wsl-up.sh writes to). Unverified, not confirmed absent — so this still
+  // has to block rather than assume the platform-appropriate default happened.
   record(
-    fallbackAvailable ? 'warn' : 'fail',
+    'fail',
     'sandbox provider',
-    fallbackAvailable
-      ? 'none configured — local sandbox fallback should cover it on this platform'
-      : 'none configured, and no local fallback on Windows — sandbox AND skills will both fail',
-    fallbackAvailable
-      ? 'Confirm the harness log said "Local sandbox fallback is available". If not, or for reliability, register Daytona: Settings → Sandbox providers.'
-      : 'The local sandbox fallback is Linux/macOS only. Register Daytona (Settings → Sandbox providers) or run the harness under WSL.',
+    'none configured, and its fallback log could not be read from here to confirm one is active',
+    'Register Daytona (Settings → Sandbox providers), or run doctor where /tmp/tf-harness.log is readable.',
   );
 }
 
@@ -320,8 +377,12 @@ async function checkConnector(client) {
       );
     }
   } catch (error) {
+    // The connector is a hard dependency — nothing runs without it. An API
+    // error here means the check could not confirm it exists, which is not the
+    // same as it existing, so this cannot be a warning without doctor exiting
+    // 0 on a setup that has not actually been verified.
     record(
-      'warn',
+      'fail',
       `connector '${EXPECTED_CONNECTOR}'`,
       `could not list (${error instanceof Error ? error.message : error})`,
     );
@@ -345,8 +406,11 @@ async function checkSkill(client) {
       );
     }
   } catch (error) {
+    // Same reasoning as the connector check above: the skill is required for
+    // the investigation methodology to load at all, so an unverifiable state
+    // must block, not warn.
     record(
-      'warn',
+      'fail',
       `skill '${EXPECTED_SKILL}'`,
       `could not list (${error instanceof Error ? error.message : error})`,
     );

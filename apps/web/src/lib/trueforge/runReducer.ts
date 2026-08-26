@@ -335,6 +335,12 @@ export function reduce(state: RunState, event: AnyEvent, index: EventIndex): Run
       if (eventState?.status === 'error') {
         state.status = 'error';
         state.error = eventState.message ?? 'The turn ended in an error with no message.';
+        // The turn is dead, so any approval still marked pending is now a
+        // decision with nowhere to go — the session that would receive it has
+        // already ended in error. Left uncleared, the UI would keep offering
+        // Approve/Decline on a turn that no longer exists, and clicking either
+        // would fail against a session with no live turn to resume.
+        state.pendingApprovals = [];
         // A distinct kind, not `turn_done` with a different label: `turn_done`
         // renders with the timeline's green "DONE" tag, which would put the
         // exact same success signal on a failed run that this fix exists to

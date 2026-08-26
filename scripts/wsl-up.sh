@@ -70,9 +70,28 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 
+# The loop above only ever breaks early on success; exhausting it falls
+# straight through with nothing having verified that. Explicitly re-check each
+# port here, so a service that failed to start (crashed, hung, or is still
+# installing past the timeout) is reported as failed rather than the script
+# unconditionally printing READY over whatever actually happened.
 echo
 echo "listening:"
-ss -ltn 2>/dev/null | grep -E ':(8790|8940|3000) ' | sed 's/^/  /' || echo "  none"
+ss -ltn 2>/dev/null | grep -E ':(8790|8940|3000|8791) ' | sed 's/^/  /' || echo "  none"
+
+missing=()
+listening 8790 || missing+=("harness (:8790) — see /tmp/tf-harness.log")
+listening 8940 || missing+=("ops MCP (:8940) — see /tmp/tf-mcp.log")
+listening 3000 || missing+=("UI (:3000) — see /tmp/tf-web.log")
+listening 8791 || missing+=("harness forwarder (:8791) — see /tmp/tf-forward.log")
+
+if [ "${#missing[@]}" -gt 0 ]; then
+  echo
+  echo "NOT READY — the following did not start within the timeout:"
+  for m in "${missing[@]}"; do echo "  - $m"; done
+  exit 1
+fi
+
 echo
 echo "READY — blocking to keep processes alive. Ctrl-C or kill this task to stop."
 

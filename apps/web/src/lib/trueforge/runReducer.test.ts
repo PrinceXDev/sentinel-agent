@@ -174,6 +174,32 @@ describe('turn lifecycle', () => {
     expect(entry?.kind).not.toBe('turn_done');
   });
 
+  it('clears a pending approval when its turn ends in error', () => {
+    // Qodo (High): the error branch set status and the timeline entry but
+    // never touched pendingApprovals. A turn can die — a model-provider
+    // failure, an exhausted credit balance — after it has already asked for
+    // approval on a destructive call, and without this the UI kept offering
+    // Approve/Decline against a turn that no longer exists. Clicking either
+    // would fail: there is no live turn left to resume.
+    apply(
+      turnCreated(),
+      rootThread(),
+      messageWithToolCall({
+        eventId: 'ev_msg',
+        callId: 'call_1',
+        toolName: 'rollback_deployment',
+        serverName: 'sentinel-ops',
+        argsJson: '{"deployment_id":"dpl-4c21"}',
+      }),
+      approvalRequired('call_1', 'ev_msg'),
+    );
+    expect(state.pendingApprovals).toHaveLength(1);
+
+    apply(turnErrored('Request failed (402): out of credits.'));
+    expect(state.pendingApprovals).toHaveLength(0);
+    expect(state.status).toBe('error');
+  });
+
   it('falls back to a generic message when the harness sends none', () => {
     apply(turnCreated(), {
       type: 'turn.done',

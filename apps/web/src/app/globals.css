@@ -44,6 +44,15 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /*
+   * Belt and braces. Harness-sourced error text (a long unspaced URL from
+   * OpenRouter's own 402 response, in the one case that actually surfaced this)
+   * has already caused a page-level horizontal scroll once, from inside a
+   * 320px-wide sidebar three levels deep. Every render site of that kind of text
+   * now carries its own `break-words`, but a future one that doesn't should
+   * break its own panel's layout, not the whole page's.
+   */
+  overflow-x: hidden;
 }
 
 /* Digits that line up in columns — timestamps, latencies, counts. */

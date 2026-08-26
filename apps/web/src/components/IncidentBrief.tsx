@@ -14,6 +14,7 @@
  */
 
 import type { EstateState } from '@/lib/estate';
+import { formatClock } from '@/lib/formatClock';
 
 const SEVERITY_TONE: Record<string, string> = {
   'SEV-1': 'text-danger',
@@ -40,9 +41,9 @@ interface IncidentBriefProps {
 export function IncidentBrief({ state, error }: IncidentBriefProps) {
   if (error) {
     return (
-      <div className="border-danger/30 border-b bg-danger/5 px-5 py-3">
+      <div className="border-danger/30 border-b bg-danger/5 px-3 py-3 sm:px-5">
         <span className="eyebrow text-danger">estate unavailable</span>
-        <p className="mt-1 text-danger text-xs">{error}</p>
+        <p className="mt-1 break-words text-danger text-xs">{error}</p>
       </div>
     );
   }
@@ -50,7 +51,7 @@ export function IncidentBrief({ state, error }: IncidentBriefProps) {
   const incident = state?.incidents[0];
   if (!incident || !state) {
     return (
-      <div className="border-line border-b px-5 py-3">
+      <div className="border-line border-b px-3 py-3 sm:px-5">
         <span className="eyebrow">loading estate…</span>
       </div>
     );
@@ -60,7 +61,7 @@ export function IncidentBrief({ state, error }: IncidentBriefProps) {
 
   return (
     <div className="shrink-0 border-line border-b bg-surface">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pt-3.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 pt-3.5 sm:px-5">
         <div className="flex items-baseline gap-2.5">
           <span className="tnum font-mono font-medium text-dim text-xs">{incident.id}</span>
           <h1 className="font-medium text-base text-ink">{incident.title}</h1>
@@ -77,9 +78,11 @@ export function IncidentBrief({ state, error }: IncidentBriefProps) {
         </span>
       </div>
 
-      <p className="max-w-3xl px-5 pt-1.5 text-muted text-xs leading-relaxed">{incident.summary}</p>
+      <p className="max-w-3xl px-3 pt-1.5 text-muted text-xs leading-relaxed sm:px-5">
+        {incident.summary}
+      </p>
 
-      <dl className="flex flex-wrap gap-x-8 gap-y-2 px-5 py-3">
+      <dl className="flex flex-wrap gap-x-6 gap-y-2 px-3 py-3 sm:gap-x-8 sm:px-5">
         <Fact label="service" value={incident.service} />
         <Fact
           label="health"
@@ -91,13 +94,13 @@ export function IncidentBrief({ state, error }: IncidentBriefProps) {
           tone={health ? (STATUS_TONE[health.status] ?? 'text-ink') : 'text-dim'}
         />
         <Fact label="live deployment" value={live ? `${live.id} · ${live.version}` : '—'} mono />
-        <Fact label="deployed" value={live ? clock(live.deployed_at) : '—'} mono />
-        <Fact label="detected" value={clock(incident.detected_at)} mono />
+        <Fact label="deployed" value={live ? formatClock(live.deployed_at) : '—'} mono />
+        <Fact label="detected" value={formatClock(incident.detected_at)} mono />
         <Fact label="source" value={incident.detected_by} mono />
       </dl>
 
       {health?.checks.some((c) => !c.ok) && (
-        <ul className="flex flex-col gap-1 border-line border-t px-5 py-2.5">
+        <ul className="flex flex-col gap-1 border-line border-t px-3 py-2.5 sm:px-5">
           {health.checks
             .filter((c) => !c.ok)
             .map((c) => (
@@ -111,11 +114,11 @@ export function IncidentBrief({ state, error }: IncidentBriefProps) {
       )}
 
       {incident.notes.length > 0 && (
-        <ul className="flex flex-col gap-1.5 border-line border-t px-5 py-2.5">
+        <ul className="flex flex-col gap-1.5 border-line border-t px-3 py-2.5 sm:px-5">
           {incident.notes.map((note) => (
             <li key={`${note.at}:${note.author}`} className="text-xs">
               <span className="font-mono text-[0.65rem] text-dim">
-                {clock(note.at)} · {note.author}
+                {formatClock(note.at)} · {note.author}
               </span>
               <p className="mt-0.5 text-muted leading-relaxed">{note.body}</p>
             </li>
@@ -143,10 +146,4 @@ function Fact({
       <dd className={`text-xs ${mono ? 'tnum font-mono' : ''} ${tone}`}>{value}</dd>
     </div>
   );
-}
-
-function clock(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toISOString().slice(11, 19);
 }

@@ -23,6 +23,7 @@
  */
 
 import { ToolCallDetail } from '@/components/ToolCallDetail';
+import { formatClock } from '@/lib/formatClock';
 import type { TimelineEntry, TimelineKind, ToolCallView } from '@/lib/trueforge/types';
 
 const KIND_META: Record<TimelineKind, { tag: string; tone: string }> = {
@@ -37,13 +38,8 @@ const KIND_META: Record<TimelineKind, { tag: string; tone: string }> = {
   approval_required: { tag: 'GATE', tone: 'text-gate' },
   mcp_auth_required: { tag: 'AUTH', tone: 'text-danger' },
   turn_done: { tag: 'DONE', tone: 'text-ok' },
+  turn_error: { tag: 'FAILED', tone: 'text-danger' },
 };
-
-function clockOf(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '--:--:--';
-  return d.toISOString().slice(11, 19);
-}
 
 interface TimelineProps {
   entries: TimelineEntry[];
@@ -85,17 +81,22 @@ export function Timeline({ entries, rootThreadId, toolCalls }: TimelineProps) {
         return (
           <li
             key={`${entry.id}:${entry.kind}`}
-            className="grid grid-cols-[4.5rem_5.5rem_1fr] gap-3 border-line/60 border-b px-5 py-2.5 hover:bg-surface/40"
+            className="grid grid-cols-[3.5rem_4rem_1fr] gap-2 border-line/60 border-b px-3 py-2.5 hover:bg-surface/40 sm:grid-cols-[4.5rem_5.5rem_1fr] sm:gap-3 sm:px-5"
           >
-            <time className="tnum pt-px font-mono text-[0.7rem] text-dim" dateTime={entry.at}>
-              {clockOf(entry.at)}
+            <time
+              className="tnum pt-px font-mono text-[0.62rem] text-dim sm:text-[0.7rem]"
+              dateTime={entry.at}
+            >
+              {formatClock(entry.at)}
             </time>
 
-            <span className={`pt-px font-mono text-[0.62rem] tracking-[0.12em] ${meta.tone}`}>
+            <span
+              className={`pt-px font-mono text-[0.56rem] tracking-[0.08em] sm:text-[0.62rem] sm:tracking-[0.12em] ${meta.tone}`}
+            >
               {meta.tag}
             </span>
 
-            <div className={`min-w-0 ${isSub ? 'border-line-strong border-l pl-3' : ''}`}>
+            <div className={`min-w-0 ${isSub ? 'border-line-strong border-l pl-2 sm:pl-3' : ''}`}>
               <div className="flex items-baseline gap-2">
                 <p
                   className={`min-w-0 text-sm ${
@@ -128,7 +129,10 @@ export function Timeline({ entries, rootThreadId, toolCalls }: TimelineProps) {
 
 const CHIP: Record<ToolCallView['status'], { label: string; className: string }> = {
   requested: { label: 'running', className: 'border-steel-dim text-steel' },
-  awaiting_approval: { label: 'awaiting approval', className: 'border-gate/50 text-gate' },
+  awaiting_approval: {
+    label: 'awaiting approval',
+    className: 'border-gate/50 text-gate',
+  },
   denied: { label: 'declined', className: 'border-danger/50 text-danger' },
   running: { label: 'running', className: 'border-steel-dim text-steel' },
   completed: { label: 'ok', className: 'border-ok/40 text-ok' },

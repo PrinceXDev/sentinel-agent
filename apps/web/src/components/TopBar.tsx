@@ -25,7 +25,7 @@ export function TopBar({ status, sessionId, sandboxId, toolCallCount }: TopBarPr
   const s = STATUS_COPY[status];
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-line border-b bg-surface px-5 py-3">
+    <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between border-line border-b bg-surface px-3 py-3 sm:px-5">
       <div className="flex items-baseline gap-3">
         <span className="font-mono font-medium text-ink text-sm tracking-tight">
           sentinel-agent
@@ -33,15 +33,15 @@ export function TopBar({ status, sessionId, sandboxId, toolCallCount }: TopBarPr
         <span className="eyebrow hidden sm:inline">incident response</span>
       </div>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3 sm:gap-5">
         <Stat label="session" value={sessionId ? sessionId.slice(0, 12) : '—'} />
         <Stat label="sandbox" value={sandboxId ? sandboxId.slice(0, 10) : 'not provisioned'} />
         <Stat label="tool calls" value={String(toolCallCount)} />
 
-        <div className="flex items-center gap-2 border-line border-l pl-5">
+        <div className="flex items-center gap-2 border-line border-l pl-3 sm:pl-5">
           <span
             aria-hidden="true"
-            className={`size-1.5 rounded-full ${
+            className={`size-1.5 shrink-0 rounded-full ${
               status === 'awaiting_approval'
                 ? 'bg-gate'
                 : status === 'error'
@@ -53,7 +53,7 @@ export function TopBar({ status, sessionId, sandboxId, toolCallCount }: TopBarPr
                       : 'bg-steel'
             } ${s.live ? 'breathe' : ''}`}
           />
-          <span className={`font-medium text-xs ${s.tone}`}>{s.label}</span>
+          <span className={`whitespace-nowrap font-medium text-xs ${s.tone}`}>{s.label}</span>
         </div>
       </div>
     </header>

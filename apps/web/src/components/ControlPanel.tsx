@@ -26,7 +26,7 @@ export function ControlPanel({ state, subagents, estate }: ControlPanelProps) {
   const done = subagents.filter((s) => s.status === 'done').length;
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col gap-px overflow-y-auto border-line border-l bg-surface">
+    <aside className="flex w-full shrink-0 flex-col gap-px border-line border-t bg-surface lg:w-80 lg:overflow-y-auto lg:border-t-0 lg:border-l">
       <Block title="state">
         <dl className="flex flex-col gap-2">
           <Row label="status" value={state.status.replace(/_/g, ' ')} />
@@ -108,7 +108,13 @@ export function ControlPanel({ state, subagents, estate }: ControlPanelProps) {
 
       {state.error && (
         <Block title="error">
-          <p className="text-danger text-xs leading-relaxed">{state.error}</p>
+          {/* `break-words` is load-bearing, not decorative: harness error
+              messages routinely embed a long unspaced URL (an OpenRouter
+              credits-management link, in practice), and this panel is only
+              320px wide at `lg`+. Without it that one token forces the whole
+              page into horizontal scroll instead of wrapping inside the
+              column that was built to hold it. */}
+          <p className="break-words text-danger text-xs leading-relaxed">{state.error}</p>
         </Block>
       )}
     </aside>

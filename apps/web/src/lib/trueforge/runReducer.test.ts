@@ -107,6 +107,21 @@ function turnDone(requiredActions: { type: string }[]): Event {
   } as unknown as Event;
 }
 
+/**
+ * A terminal `turn.done` whose state carries `status: 'error'` — a mid-turn
+ * model-provider failure (a rate limit, an exhausted credit balance), not the
+ * absence of required actions. Distinct from `turnDone()` above.
+ */
+function turnErrored(message: string): Event {
+  return {
+    type: 'turn.done',
+    id: 'ev_errored',
+    threadId: null,
+    createdAt: AT,
+    state: { status: 'error', message, completedAt: AT },
+  } as unknown as Event;
+}
+
 function approvalRequired(callId: string, sourceEventId: string, threadId = 'thr_root'): Event {
   return {
     type: 'tool.approval_required',
@@ -135,6 +150,66 @@ describe('turn lifecycle', () => {
     // in this reducer, since it would make the agent look approved.
     apply(turnCreated(), turnDone([{ type: 'tool.approval_required' }]));
     expect(state.status).toBe('awaiting_approval');
+  });
+
+  it('surfaces an errored turn as an error, not as a completed run', () => {
+    // The terminal state a `turn.done` carries is not only "done" (optionally
+    // still blocked) — it can also be "error", produced by a mid-turn
+    // model-provider failure such as an exhausted credit balance. The original
+    // reducer checked only for `requiredActions` and defaulted anything else to
+    // `done`, so an errored turn rendered identically to a genuine success: the
+    // status bar read "Complete" in green over a run that had in fact failed
+    // partway through and produced no usable result.
+    apply(turnCreated(), turnErrored('Request failed (402): This request requires more credits.'));
+    expect(state.status).toBe('error');
+    expect(state.error).toBe('Request failed (402): This request requires more credits.');
+  });
+
+  it("renders the errored turn's timeline entry as failed, not as done", () => {
+    // A regression here would put the timeline's green "DONE" tag on a run that
+    // failed — the exact confusion the status-level fix above exists to remove.
+    apply(turnCreated(), turnErrored('boom'));
+    const entry = state.timeline.at(-1);
+    expect(entry?.kind).toBe('turn_error');
+    expect(entry?.kind).not.toBe('turn_done');
+  });
+
+  it('clears a pending approval when its turn ends in error', () => {
+    // Qodo (High): the error branch set status and the timeline entry but
+    // never touched pendingApprovals. A turn can die — a model-provider
+    // failure, an exhausted credit balance — after it has already asked for
+    // approval on a destructive call, and without this the UI kept offering
+    // Approve/Decline against a turn that no longer exists. Clicking either
+    // would fail: there is no live turn left to resume.
+    apply(
+      turnCreated(),
+      rootThread(),
+      messageWithToolCall({
+        eventId: 'ev_msg',
+        callId: 'call_1',
+        toolName: 'rollback_deployment',
+        serverName: 'sentinel-ops',
+        argsJson: '{"deployment_id":"dpl-4c21"}',
+      }),
+      approvalRequired('call_1', 'ev_msg'),
+    );
+    expect(state.pendingApprovals).toHaveLength(1);
+
+    apply(turnErrored('Request failed (402): out of credits.'));
+    expect(state.pendingApprovals).toHaveLength(0);
+    expect(state.status).toBe('error');
+  });
+
+  it('falls back to a generic message when the harness sends none', () => {
+    apply(turnCreated(), {
+      type: 'turn.done',
+      id: 'ev_errored_blank',
+      threadId: null,
+      createdAt: AT,
+      state: { status: 'error', completedAt: AT },
+    } as unknown as Event);
+    expect(state.status).toBe('error');
+    expect(state.error).toMatch(/error/i);
   });
 });
 

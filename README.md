@@ -14,14 +14,14 @@ This is an in-progress hackathon build. What is done, verified, and what is not:
 
 | Component                                                | Status                                                       |
 | -------------------------------------------------------- | ------------------------------------------------------------ |
-| Ops MCP server — 10 tools, risk-classified and annotated | **Done.** 52 tests passing, annotations verified on the wire |
+| Ops MCP server — 10 tools, risk-classified and annotated | **Done.** 66 tests, annotations verified on the wire            |
 | Seeded incident estate (deterministic fixtures)          | **Done.** Reproducible 3.7x regression                       |
 | Agent spec — approval policy, sandbox, subagents         | **Done.** Cross-checked against the tool registry by test    |
 | `incident-response` skill                                | **Done.** Awaiting registration (needs public repo URL)      |
 | Architecture documentation                               | **Done** — [docs/architecture.md](docs/architecture.md)      |
-| sentinel-agent UI (React)                                | **Not started**                                              |
+| sentinel-agent UI (Next.js 16 + React 19)                | **Done.** Timeline, subagent threads, approval gate, audit   |
 | End-to-end run against a live harness                    | **Blocked** on model + Daytona credentials                   |
-| Qodo review trail                                        | **Not started**                                              |
+| Qodo review trail                                        | **In progress.** PR #1 reviewed; 6 findings addressed        |
 | Demo video                                               | **Not started**                                              |
 
 Nothing below claims a capability that has not been exercised. Where something is unverified, it says so.
@@ -183,7 +183,7 @@ Take [`agent/sentinel-agent.agent.json`](agent/sentinel-agent.agent.json), repla
 npm test
 ```
 
-52 tests. The ones that matter are in `apps/mcp-server/src/tools/registry.test.ts`.
+99 tests (66 MCP + 33 UI). The ones that matter are in `apps/mcp-server/src/tools/registry.test.ts`.
 
 To confirm annotations reach the wire:
 
@@ -227,24 +227,43 @@ docs/architecture.md   Architecture, decisions, and their costs
 
 ## Qodo Code Review Evidence
 
-> **Not yet populated.** This section will be filled in once real pull requests exist and Qodo has reviewed them. No PR links are invented here — an empty section is honest, a fabricated one is not.
-
-Planned structure:
-
-```
 ### Representative PR
-[PR #NN — description](url)
+
+[PR #1 — feat: initial sentinel-agent scaffold — MCP server, UI, and agent spec](https://github.com/PrinceXDev/sentinel-agent/pull/1)
 
 ### What Qodo found
-- Finding · severity · what changed in response
 
-### Follow-up review
-[Follow-up review](url)
+Six findings — two High, four Medium. All six were legitimate; none were
+dismissed. Two of them were holes in the project's central safety claim, which is
+exactly the kind of thing that is invisible when you wrote the code yourself.
+
+| # | Severity | Finding | What changed |
+|---|---|---|---|
+| 1 | **High** | Harness proxy attached the server-held bearer token for any caller, with no authorisation or CSRF protection — a page in another tab could approve a production rollback | `/tf/[...path]` refuses cross-origin mutations via `Sec-Fetch-Site`; `next dev` pinned to `127.0.0.1`; trust model documented |
+| 2 | **High** | MCP server bound `0.0.0.0` and executed `/mcp` unauthenticated, so `rollback_deployment` was reachable directly — never passing through the harness, so never reaching the approval gate | Binds `127.0.0.1` by default; optional `OPS_MCP_TOKEN` bearer auth (constant-time compare); insecure posture logged at `error`; `/estate` CORS narrowed from `*` to known origins |
+| 3 | Medium | Optimistic approval removal left no retry path if the submission failed, stranding a run the harness was still blocking on | Snapshot before mutating, restore on failure — skipped if the call has since completed, to avoid a duplicate 422 |
+| 4 | Medium | `reset()` replaced state without invalidating the active stream, so a superseded run's events repopulated the fresh state | Generation token, incremented by `start()` and `reset()`; `consume` drops events from a stale generation |
+| 5 | Medium | `deployAnchor()` returned the fixture constant, so after a rollback the agent's change-point anchor pointed at a deployment no longer live | Derived from the live deployment; three regression tests |
+| 6 | Medium | `isEstateState()` validated only two top-level fields — `incidents: [null]` passed and crashed the render | Full leaf-level validation; 13 guard tests |
+
+Finding 2 is the one worth dwelling on. This project's entire thesis is that
+irreversible actions pause for a human — and the gate is enforced by the harness,
+not by the MCP server. So the gate protects a *path*, not a *tool*: anything
+reaching the MCP server directly never encounters it. Binding to all interfaces
+therefore didn't weaken the safety model, it offered a way around it entirely.
+See [docs/architecture.md § Trust model](docs/architecture.md#trust-model).
+
+### Verification after the fixes
+
+- 99 tests (66 MCP + 33 UI), up from 69 — every fix carries a regression test
+- `biome ci` clean, typecheck clean under `strict`, `next build` clean, `npm audit` 0 vulnerabilities
+- Both security fixes verified at runtime, not just in tests: `/mcp` returns 401 without a token and 200 with it; the server refuses LAN connections while loopback works; the proxy returns 403 for cross-site and `same-site` mutations and passes `same-origin` through
 
 ### Review process
-All substantive changes developed through pull requests, reviewed by Qodo,
-addressed, and merged. Direct pushes to main were not used.
-```
+
+Substantive changes go through pull requests reviewed by Qodo before merge.
+High-severity findings are fixed rather than dismissed; the two here were both
+real. Nothing in this section is a link to a review that did not happen.
 
 ## Known limitations
 

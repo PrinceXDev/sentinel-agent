@@ -154,7 +154,7 @@ export const exportMetricsCsv = defineTool({
       service,
       sample_count: samples.length,
       resolution: '1m',
-      deploy_anchor: estate.deployAnchor(),
+      deploy_anchor: estate.deployAnchor(service),
       csv: [header, ...rows].join('\n'),
     });
   },

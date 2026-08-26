@@ -124,8 +124,90 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Every element satisfies `check`. Empty arrays pass, which is correct here. */
+function isArrayOf<T>(value: unknown, check: (v: unknown) => v is T): value is T[] {
+  return Array.isArray(value) && value.every(check);
+}
+
+function isNote(v: unknown): v is EstateIncident['notes'][number] {
+  return isRecord(v) && isStr(v.at) && isStr(v.author) && isStr(v.body);
+}
+
+function isIncident(v: unknown): v is EstateIncident {
+  return (
+    isRecord(v) &&
+    isStr(v.id) &&
+    isStr(v.title) &&
+    isStr(v.service) &&
+    isStr(v.severity) &&
+    isStr(v.status) &&
+    isStr(v.summary) &&
+    isStr(v.detected_at) &&
+    isStr(v.detected_by) &&
+    isArrayOf(v.notes, isNote)
+  );
+}
+
+function isDeployment(v: unknown): v is EstateDeployment {
+  return (
+    isRecord(v) &&
+    isStr(v.id) &&
+    isStr(v.service) &&
+    isStr(v.version) &&
+    isStr(v.commit_sha) &&
+    isStr(v.author) &&
+    isStr(v.message) &&
+    isStr(v.deployed_at) &&
+    isStr(v.status) &&
+    isArrayOf(v.changed_files, isStr)
+  );
+}
+
+function isHealthCheck(v: unknown): v is EstateHealth['checks'][number] {
+  return isRecord(v) && isStr(v.name) && typeof v.ok === 'boolean' && isStr(v.detail);
+}
+
+function isHealth(v: unknown): v is EstateHealth {
+  return (
+    isRecord(v) &&
+    isStr(v.service) &&
+    isStr(v.status) &&
+    isStr(v.live_deployment_id) &&
+    isNum(v.replicas_ready) &&
+    isNum(v.replicas_desired) &&
+    isArrayOf(v.checks, isHealthCheck)
+  );
+}
+
+/**
+ * Validate an `/estate/state` payload down to its leaves.
+ *
+ * The shallow version — `service` is a string and `incidents` is an array — was
+ * not a guard so much as a formality. `incidents: [null]` passed it, and the
+ * incident header then read `.title` off `null` and took the view down mid-run.
+ * `live_deployment` and `health` were never checked at all despite being rendered
+ * directly.
+ *
+ * This is the only defence against server/client drift: the types here are
+ * deliberately duplicated from the MCP server rather than shared (see the module
+ * header), so a shape change on the server does not fail this app's typecheck.
+ * Whatever this function does not check, nothing does.
+ *
+ * `null` is accepted for `live_deployment` and `health` because the server
+ * genuinely sends null for an unknown service — that is valid, not malformed.
+ */
 export function isEstateState(value: unknown): value is EstateState {
-  return isRecord(value) && typeof value.service === 'string' && Array.isArray(value.incidents);
+  return (
+    isRecord(value) &&
+    isStr(value.service) &&
+    isArrayOf(value.incidents, isIncident) &&
+    (value.live_deployment === null || isDeployment(value.live_deployment)) &&
+    (value.health === null || isHealth(value.health)) &&
+    isArrayOf(value.deployments, isDeployment)
+  );
 }
 
 function isAuditPayload(value: unknown): value is { entries: AuditEntry[] } {

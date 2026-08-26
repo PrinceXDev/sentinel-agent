@@ -116,9 +116,22 @@ export class EstateStore {
       });
   }
 
-  /** The moment the current live deployment went out, for change-point analysis. */
-  deployAnchor(): string {
-    return new Date(DEPLOY_AT).toISOString();
+  /**
+   * The moment the currently-live deployment went out, for change-point analysis.
+   *
+   * Derived from live state rather than the fixture constant. Returning
+   * `DEPLOY_AT` unconditionally was wrong after a rollback: the agent is told to
+   * use this as its candidate change point, so once `dpl-4c21` is retired and
+   * `dpl-4c20` is live, a fixed anchor points at a deployment that is no longer
+   * running. Any post-remediation verification would then split its series at the
+   * wrong timestamp and conclude the rollback had not worked.
+   *
+   * Falls back to the fixture constant only when no deployment is live, which
+   * cannot happen with the seeded estate but would otherwise return `undefined`.
+   */
+  deployAnchor(service: string = SERVICE): string {
+    const live = this.liveDeployment(service);
+    return live ? live.deployed_at : new Date(DEPLOY_AT).toISOString();
   }
 
   listAudit(): readonly AuditEntry[] {

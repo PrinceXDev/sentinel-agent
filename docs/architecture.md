@@ -4,13 +4,21 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  sentinel-agent UI            React + TypeScript + Vite            │
-│                                                              │
+│  sentinel-agent UI        Next.js 16 · React 19 · TypeScript │
+│                          (127.0.0.1:3000, loopback only)     │
 │  Renders the agent's execution as it happens: timeline,      │
 │  subagent threads, sandbox runs, evidence, approval gate.    │
 │  Holds no agent logic — it is a view over TrueForge events.  │
 └───────────────────────────┬──────────────────────────────────┘
-                            │  HTTP + SSE  (Vite proxies /tf → :8790)
+                            │
+              ┌─────────────▼──────────────┐
+              │  /tf/[...path] Route Handler │
+              │  Attaches TRUEFORGE_TOKEN    │
+              │  server-side; streams SSE    │
+              │  through; refuses cross-     │
+              │  origin mutations            │
+              └─────────────┬──────────────┘
+                            │  HTTP + SSE
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  TRUEFORGE HARNESS                          localhost:8790   │
@@ -97,6 +105,46 @@ There is no approval endpoint, and no approval id. The flow:
 3. Resolution is a **new turn**: `POST /api/v1/sessions/{id}/turns` with `input: [{ type: 'user.tool_approval', thread_id, tool_call_id, approval: { status: 'allow' | 'deny' } }]`. One item per pending call. Approval items must never be mixed with user messages in the same turn — the harness returns 422.
 4. On cold reload, `GET /turns/{turn_id}` → `state.required_actions` recovers anything still pending.
 
+## Trust model
+
+The approval gate is enforced by the **harness**, not by the MCP server. That is
+the right place for it — but it means the gate protects a *path*, not a *tool*.
+Anything that reaches the MCP server directly never encounters the gate at all,
+because there is nothing there to encounter. Two consequences, both found by code
+review and both now closed:
+
+**1. The MCP server must not be reachable by anything but the harness.**
+`app.listen(PORT)` binds `0.0.0.0`, which put `rollback_deployment` on every
+interface. It now binds `127.0.0.1` by default (`OPS_MCP_HOST` to override), and
+supports an optional bearer token via `OPS_MCP_TOKEN` — registered on the
+connector as Settings → Connectors → Header auth, so the harness can present it
+and nothing else can. The token matters even on loopback: any local process,
+including a browser tab running someone else's JavaScript, can reach
+`127.0.0.1:8940`. Starting off-loopback *without* a token logs at `error`, so the
+weak posture is never silent.
+
+**2. The proxy grants harness privileges to whoever can reach it.**
+`/tf/[...path]` attaches `TRUEFORGE_TOKEN` server-side, which is what keeps the
+secret out of the browser — but it also means the route itself is the credential.
+A page in another tab could `fetch()` it and approve a production rollback. The
+route now refuses cross-origin mutations via `Sec-Fetch-Site` (browsers set it;
+script cannot forge it), and `next dev` is pinned to `127.0.0.1`.
+
+### What is deliberately not modelled
+
+There is **no operator identity and no approver authorisation**. Whoever has the
+browser open is the approver, and the trust boundary is the machine. That is
+honest for a single-operator local tool, and it is why both mitigations above are
+about *reachability* rather than *identity*.
+
+A real deployment needs more: an identity provider in front of the UI, a rule
+about which humans may approve which classes of action, and an audit trail
+attributing each approval to a person rather than to "the browser". The estate's
+`/estate/audit` records that a rollback happened and what it changed; it cannot
+record *who* authorised it, because nothing here knows. Adding a half-built
+auth scheme would imply a guarantee that does not exist, so the boundary is
+documented instead.
+
 ## Credential boundaries
 
 | Secret                 | Held by                                  | Never reaches                   |
@@ -138,7 +186,7 @@ apps/
       domain/          Estate model, seeded fixtures, mutable store + audit log
       lib/             Risk classification, SDK compat shims, logger
       tools/           Tool registry, split by risk class
-  web/                 sentinel-agent UI (React + Vite)
+  web/                 sentinel-agent UI (Next.js 16 + React 19)
 agent/
   sentinel-agent.agent.json  Agent spec: model, MCP wiring, approval policy, config
 skills/

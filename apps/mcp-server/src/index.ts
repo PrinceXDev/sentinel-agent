@@ -20,6 +20,7 @@
 import express, { type Request, type Response } from 'express';
 import { SERVICE } from './domain/fixtures.js';
 import { estate } from './domain/store.js';
+import { checkMcpAuth, reportPosture } from './lib/auth.js';
 import { logger } from './lib/logger.js';
 import { connectTransport, createStatelessTransport } from './lib/mcpCompat.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from './server.js';
@@ -27,22 +28,64 @@ import { allTools } from './tools/index.js';
 
 const PORT = Number(process.env.OPS_MCP_PORT ?? 8940);
 
+/**
+ * Loopback by default.
+ *
+ * `app.listen(PORT)` with no host binds `0.0.0.0`, which puts destructive tools
+ * on every interface. The harness reaches this server from the same machine in
+ * the documented setup, so loopback costs nothing and removes the network from
+ * the threat model. Overriding this is deliberate, and `reportPosture` logs an
+ * error if it is done without a token.
+ */
+const HOST = process.env.OPS_MCP_HOST?.trim() || '127.0.0.1';
+
+/**
+ * Origins allowed to read `/estate/*` from a browser.
+ *
+ * Previously `*`. Even for read-only projections of simulated data that is
+ * broader than needed: it lets any page the operator visits enumerate the estate
+ * and the tool inventory. The UI's own origin is the only one that needs access.
+ */
+const ALLOWED_ESTATE_ORIGINS = (
+  process.env.OPS_ESTATE_ALLOWED_ORIGINS?.trim() || 'http://localhost:3000,http://127.0.0.1:3000'
+)
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 const app = express();
 app.use(express.json({ limit: '4mb' }));
 
 /**
- * The UI runs on a different origin in development, and these routes are
- * read-only projections of simulated data, so a permissive CORS policy is safe
- * here. `/mcp` is deliberately excluded — it is reached server-to-server by the
- * harness and never from a browser.
+ * `/estate/*` is a read-only projection for the UI, so it is CORS-enabled — but
+ * only for known origins, and only for GET. `/mcp` is deliberately excluded: it
+ * is reached server-to-server by the harness and never from a browser.
  */
-app.use('/estate', (_req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+app.use('/estate', (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ESTATE_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   next();
 });
 
 app.post('/mcp', async (req: Request, res: Response) => {
+  // The harness enforces approval, not this server — so a caller who reaches
+  // `/mcp` directly never encounters the gate at all. Authenticate before doing
+  // anything else. See lib/auth.ts.
+  const rejection = checkMcpAuth(req.headers.authorization);
+  if (rejection) {
+    logger.warn('mcp.unauthorized', { reason: rejection, ip: req.ip });
+    res.status(401).json({
+      jsonrpc: '2.0',
+      error: { code: -32001, message: 'Unauthorized' },
+      id: null,
+    });
+    return;
+  }
+
   // Stateless: a fresh server and transport per request. These tools are plain
   // request/response, so there is no session state worth keeping. Estate state
   // lives in the process-wide store instead — see server.ts.
@@ -102,13 +145,16 @@ app.get('/estate/state', (_req, res) => {
   });
 });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   const gated = allTools.filter((t) => t.risk !== 'read');
+  const posture = reportPosture(HOST);
   logger.info('mcp.listening', {
-    url: `http://localhost:${PORT}/mcp`,
+    url: `http://${HOST}:${PORT}/mcp`,
     tools: allTools.length,
     read_only: allTools.length - gated.length,
     approval_gated: gated.map((t) => t.name),
+    loopback_only: posture.loopbackOnly,
+    token_required: posture.tokenRequired,
   });
 });
 

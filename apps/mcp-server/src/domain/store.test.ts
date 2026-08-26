@@ -145,6 +145,32 @@ describe('rollback_deployment', () => {
   });
 });
 
+describe('deployAnchor', () => {
+  // Qodo (Medium): the anchor was the fixture constant, so after a rollback it
+  // pointed at a deployment that was no longer live. The agent uses this as its
+  // candidate change point, so a stale anchor makes post-remediation
+  // verification split its series at the wrong timestamp — and conclude the
+  // rollback had not worked.
+  it('matches the live deployment before any remediation', () => {
+    expect(estate.deployAnchor(SERVICE)).toBe(estate.liveDeployment(SERVICE)?.deployed_at);
+  });
+
+  it('follows the live deployment after a rollback', () => {
+    const before = estate.deployAnchor(SERVICE);
+    estate.rollbackDeployment('dpl-4c21', 'sentinel-agent');
+    const after = estate.deployAnchor(SERVICE);
+
+    expect(after).not.toBe(before);
+    expect(after).toBe(estate.getDeployment('dpl-4c20')?.deployed_at);
+    expect(estate.liveDeployment(SERVICE)?.id).toBe('dpl-4c20');
+  });
+
+  it('is always the timestamp of whichever deployment is live', () => {
+    estate.rollbackDeployment('dpl-4c21', 'sentinel-agent');
+    expect(estate.deployAnchor(SERVICE)).toBe(estate.liveDeployment(SERVICE)?.deployed_at);
+  });
+});
+
 describe('restart_service', () => {
   it('reports the replica count it restarted', () => {
     const result = estate.restartService(SERVICE, 'sentinel-agent');

@@ -24,7 +24,13 @@ import { clearHandle, createClient, loadHandle, saveHandle } from '@/lib/truefor
 import { describeError } from '@/lib/trueforge/errors';
 import { EventIndex } from '@/lib/trueforge/eventIndex';
 import { reduce } from '@/lib/trueforge/runReducer';
-import { emptyRunState, type RunState } from '@/lib/trueforge/types';
+import {
+  emptyRunState,
+  type PendingApproval,
+  type RunState,
+  type RunStatus,
+  type ToolCallStatus,
+} from '@/lib/trueforge/types';
 
 export interface UseAgentRun {
   readonly state: RunState;
@@ -77,6 +83,39 @@ function applyDecisionOptimistically(
   if (call) call.status = status === 'allow' ? 'running' : 'denied';
   state.pendingApprovals = state.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
   state.status = 'running';
+}
+
+/** What was true before an optimistic decision, so a failure can be undone. */
+interface DecisionSnapshot {
+  readonly approvals: PendingApproval[];
+  readonly toolCallStatus: ToolCallStatus | null;
+  readonly toolCallId: string;
+  readonly runStatus: RunStatus;
+}
+
+function snapshotDecision(state: RunState, toolCallId: string): DecisionSnapshot {
+  return {
+    approvals: [...state.pendingApprovals],
+    toolCallStatus: state.toolCalls.get(toolCallId)?.status ?? null,
+    toolCallId,
+    runStatus: state.status,
+  };
+}
+
+/**
+ * Undo an optimistic decision whose submission failed.
+ *
+ * Skipped when the tool call has since completed: that means the decision
+ * actually reached the harness and the failure was in reading the response, so
+ * re-offering the approval would produce a duplicate submission and a 422.
+ */
+function restoreDecision(state: RunState, snapshot: DecisionSnapshot): void {
+  const call = state.toolCalls.get(snapshot.toolCallId);
+  if (call?.status === 'completed') return;
+
+  state.pendingApprovals = snapshot.approvals;
+  if (call && snapshot.toolCallStatus) call.status = snapshot.toolCallStatus;
+  state.status = snapshot.runStatus;
 }
 
 /**
@@ -133,6 +172,12 @@ export function useAgentRun(): UseAgentRun {
   const stateRef = useRef<RunState>(emptyRunState());
   const indexRef = useRef<EventIndex>(new EventIndex());
   const clientRef = useRef<TrueForge | null>(null);
+  /**
+   * Identifies the current run. Incremented by `start()` and `reset()`; a
+   * `consume` loop that finds it changed stops writing. This is the only thing
+   * preventing a superseded stream from repopulating fresh state.
+   */
+  const generationRef = useRef(0);
 
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -170,7 +215,14 @@ export function useAgentRun(): UseAgentRun {
       },
       sessionId: string,
     ) => {
+      // Capture the generation this stream belongs to. `reset()` and `start()`
+      // increment it, so events arriving from a superseded run are dropped
+      // instead of writing into the state that replaced it.
+      const generation = generationRef.current;
+
       for await (const { data: event, id } of stream.withMetadata()) {
+        if (generation !== generationRef.current) return;
+
         if (id != null) {
           const seq = Number(id);
           if (Number.isFinite(seq)) stateRef.current.lastSequenceNumber = seq;
@@ -193,6 +245,9 @@ export function useAgentRun(): UseAgentRun {
       setBusy(true);
 
       // A new investigation is a new session; clear anything from the last one.
+      // Bumping the generation first invalidates any stream still consuming from
+      // the previous run, so its events cannot land in this one's state.
+      generationRef.current += 1;
       stateRef.current = emptyRunState();
       indexRef.current.clear();
       clearHandle();
@@ -249,6 +304,11 @@ export function useAgentRun(): UseAgentRun {
       if (busy) return;
 
       setBusy(true);
+      // Snapshot before the optimistic update so a failed submission can be
+      // undone. Without this, a dropped network request removes the approval
+      // card while the harness is still blocked on that exact decision — the
+      // operator is left with a stalled run and no way to retry it.
+      const snapshot = snapshotDecision(stateRef.current, toolCallId);
       try {
         applyDecisionOptimistically(stateRef.current, toolCallId, approval.status);
         bump();
@@ -266,6 +326,10 @@ export function useAgentRun(): UseAgentRun {
         });
         await consume(stream, sessionId);
       } catch (error) {
+        // Restore only if the server has not since resolved it by other means —
+        // a late `tool.response` for this call means the decision did land, and
+        // re-showing the prompt would invite a duplicate that returns 422.
+        restoreDecision(stateRef.current, snapshot);
         fail(describeError(error));
       } finally {
         setBusy(false);
@@ -300,11 +364,19 @@ export function useAgentRun(): UseAgentRun {
   /**
    * Clear the local view of a run.
    *
-   * Note what this does *not* do: it does not stop a turn that is still
-   * executing on the harness. Only `cancel()` does that. Named `reset` rather
-   * than `stop` for exactly that reason.
+   * Bumps the generation token, which is what actually stops a still-running
+   * stream from writing into the fresh state. Replacing `stateRef.current` alone
+   * was not enough: an in-flight `consume` loop holds no reference to the old
+   * object — it reads `stateRef.current` on every event — so after a reset it
+   * would happily repopulate the new state with the previous run's timeline and,
+   * worse, its pending approvals.
+   *
+   * Note what this does *not* do: it does not stop the turn executing on the
+   * harness. Only `cancel()` does that. Named `reset` rather than `stop` for
+   * exactly that reason.
    */
   const reset = useCallback(() => {
+    generationRef.current += 1;
     stateRef.current = emptyRunState();
     indexRef.current.clear();
     clearHandle();

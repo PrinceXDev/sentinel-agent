@@ -21,7 +21,7 @@ import type { TrueForge, TrueForgeApi } from '@truefoundry/trueforge-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { clearHandle, createClient, loadHandle, saveHandle } from '@/lib/trueforge/client';
-import { describeError } from '@/lib/trueforge/errors';
+import { describeError, isOperatorTokenRefusal } from '@/lib/trueforge/errors';
 import { EventIndex } from '@/lib/trueforge/eventIndex';
 import { reduce } from '@/lib/trueforge/runReducer';
 import {
@@ -42,6 +42,14 @@ export interface UseAgentRun {
   readonly deny: (toolCallId: string, reason?: string) => Promise<void>;
   readonly cancel: () => Promise<void>;
   readonly reset: () => void;
+  /**
+   * Set when the proxy refused a state-changing call for want of a valid
+   * operator token. Carries the server's own reason, so the prompt explains the
+   * actual refusal rather than a guess at it. Null when no token is needed.
+   */
+  readonly tokenRefusal: string | null;
+  /** Clear the refusal after a token is entered, so the operator can retry. */
+  readonly clearTokenRefusal: () => void;
 }
 
 /** Shape of the /api/agent-spec response. */
@@ -181,6 +189,7 @@ export function useAgentRun(): UseAgentRun {
 
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [tokenRefusal, setTokenRefusal] = useState<string | null>(null);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -330,7 +339,16 @@ export function useAgentRun(): UseAgentRun {
         // a late `tool.response` for this call means the decision did land, and
         // re-showing the prompt would invite a duplicate that returns 422.
         restoreDecision(stateRef.current, snapshot);
-        fail(describeError(error));
+
+        // A token refusal is recoverable: the approval is back on screen and the
+        // operator can supply a token and click again. Routing it to `fail()`
+        // would put the run into a terminal error state over something fixable.
+        if (isOperatorTokenRefusal(error)) {
+          setTokenRefusal(describeError(error));
+          bump();
+        } else {
+          fail(describeError(error));
+        }
       } finally {
         setBusy(false);
       }
@@ -357,7 +375,14 @@ export function useAgentRun(): UseAgentRun {
       stateRef.current.status = 'cancelled';
       bump();
     } catch (error) {
-      fail(describeError(error));
+      // Cancelling is a POST, so it is gated too. Same reasoning as `respond`:
+      // recoverable, so prompt rather than entering a terminal error state.
+      if (isOperatorTokenRefusal(error)) {
+        setTokenRefusal(describeError(error));
+        bump();
+      } else {
+        fail(describeError(error));
+      }
     }
   }, [bump, client, fail]);
 
@@ -414,6 +439,8 @@ export function useAgentRun(): UseAgentRun {
     };
   }, [bump, client, consume]);
 
+  const clearTokenRefusal = useCallback(() => setTokenRefusal(null), []);
+
   return {
     state: stateRef.current,
     version,
@@ -423,5 +450,7 @@ export function useAgentRun(): UseAgentRun {
     deny,
     cancel,
     reset,
+    tokenRefusal,
+    clearTokenRefusal,
   };
 }

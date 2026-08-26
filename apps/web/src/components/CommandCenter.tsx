@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ApprovalGate } from '@/components/ApprovalGate';
 import { ControlPanel } from '@/components/ControlPanel';
 import { IncidentBrief } from '@/components/IncidentBrief';
+import { OperatorTokenPrompt } from '@/components/OperatorTokenPrompt';
 import { Timeline } from '@/components/Timeline';
 import { TopBar } from '@/components/TopBar';
 import { useAgentRun } from '@/hooks/useAgentRun';
@@ -114,6 +115,14 @@ export function CommandCenter() {
               </p>
             </div>
           </div>
+
+          {run.tokenRefusal && (
+            <OperatorTokenPrompt
+              reason={run.tokenRefusal}
+              onSaved={run.clearTokenRefusal}
+              onDismiss={run.clearTokenRefusal}
+            />
+          )}
 
           <ApprovalGate
             approvals={approvals}

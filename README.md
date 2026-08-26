@@ -14,7 +14,7 @@ This is an in-progress hackathon build. What is done, verified, and what is not:
 
 | Component                                                | Status                                                       |
 | -------------------------------------------------------- | ------------------------------------------------------------ |
-| Ops MCP server — 10 tools, risk-classified and annotated | **Done.** 66 tests, annotations verified on the wire            |
+| Ops MCP server — 10 tools, risk-classified and annotated | **Done.** 66 tests, annotations verified on the wire         |
 | Seeded incident estate (deterministic fixtures)          | **Done.** Reproducible 3.7x regression                       |
 | Agent spec — approval policy, sandbox, subagents         | **Done.** Cross-checked against the tool registry by test    |
 | `incident-response` skill                                | **Done.** Awaiting registration (needs public repo URL)      |
@@ -183,7 +183,7 @@ Take [`agent/sentinel-agent.agent.json`](agent/sentinel-agent.agent.json), repla
 npm test
 ```
 
-99 tests (66 MCP + 33 UI). The ones that matter are in `apps/mcp-server/src/tools/registry.test.ts`.
+108 tests (66 MCP + 42 UI). The ones that matter are in `apps/mcp-server/src/tools/registry.test.ts`.
 
 To confirm annotations reach the wire:
 
@@ -239,7 +239,7 @@ exactly the kind of thing that is invisible when you wrote the code yourself.
 
 | # | Severity | Finding | What changed |
 |---|---|---|---|
-| 1 | **High** | Harness proxy attached the server-held bearer token for any caller, with no authorisation or CSRF protection — a page in another tab could approve a production rollback | `/tf/[...path]` refuses cross-origin mutations via `Sec-Fetch-Site`; `next dev` pinned to `127.0.0.1`; trust model documented |
+| 1 | **High** | Harness proxy attached the server-held bearer token for any caller, with no authorisation or CSRF protection — anything able to reach `:3000` could approve a production rollback | Two controls: `Sec-Fetch-Site` refuses cross-origin browser requests, and an **operator token** (`SENTINEL_UI_TOKEN`, sent as `x-sentinel-operator`) is required for every state-changing method — closing local `curl` callers, which send no `Sec-Fetch-Site` at all. Fails closed when unconfigured. `next dev` pinned to `127.0.0.1` |
 | 2 | **High** | MCP server bound `0.0.0.0` and executed `/mcp` unauthenticated, so `rollback_deployment` was reachable directly — never passing through the harness, so never reaching the approval gate | Binds `127.0.0.1` by default; optional `OPS_MCP_TOKEN` bearer auth (constant-time compare); insecure posture logged at `error`; `/estate` CORS narrowed from `*` to known origins |
 | 3 | Medium | Optimistic approval removal left no retry path if the submission failed, stranding a run the harness was still blocking on | Snapshot before mutating, restore on failure — skipped if the call has since completed, to avoid a duplicate 422 |
 | 4 | Medium | `reset()` replaced state without invalidating the active stream, so a superseded run's events repopulated the fresh state | Generation token, incremented by `start()` and `reset()`; `consume` drops events from a stale generation |
@@ -253,11 +253,22 @@ reaching the MCP server directly never encounters it. Binding to all interfaces
 therefore didn't weaken the safety model, it offered a way around it entirely.
 See [docs/architecture.md § Trust model](docs/architecture.md#trust-model).
 
+Finding 1 took two rounds. The first attempt added a `Sec-Fetch-Site` origin
+check and documented caller authentication as out of scope — and Qodo did not
+mark it resolved, correctly: an origin check is not authentication, and my own
+guard explicitly allowed non-browser callers, so a local `curl` could still
+submit an approval. The operator token is the actual fix.
+
 ### Verification after the fixes
 
-- 99 tests (66 MCP + 33 UI), up from 69 — every fix carries a regression test
+- 108 tests (66 MCP + 42 UI), up from 69 — every fix carries a regression test
 - `biome ci` clean, typecheck clean under `strict`, `next build` clean, `npm audit` 0 vulnerabilities
-- Both security fixes verified at runtime, not just in tests: `/mcp` returns 401 without a token and 200 with it; the server refuses LAN connections while loopback works; the proxy returns 403 for cross-site and `same-site` mutations and passes `same-origin` through
+- Every security fix verified at runtime, not just in tests:
+  - `/mcp` returns 401 with no token, 401 with a wrong one, 200 with the right one
+  - the MCP server refuses LAN connections while loopback works (`netstat` confirms it binds `127.0.0.1`, not `0.0.0.0`)
+  - the proxy returns 403 for cross-site and `same-site` mutations, and passes `same-origin` through
+  - a local `curl` POST — the exact vector finding 1 described — returns 403 without the operator token, 403 with a wrong one, and passes with the right one
+  - with `SENTINEL_UI_TOKEN` unset, mutations return 403 rather than being allowed through
 
 ### Review process
 

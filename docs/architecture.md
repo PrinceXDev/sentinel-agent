@@ -126,24 +126,51 @@ weak posture is never silent.
 **2. The proxy grants harness privileges to whoever can reach it.**
 `/tf/[...path]` attaches `TRUEFORGE_TOKEN` server-side, which is what keeps the
 secret out of the browser — but it also means the route itself is the credential.
-A page in another tab could `fetch()` it and approve a production rollback. The
-route now refuses cross-origin mutations via `Sec-Fetch-Site` (browsers set it;
-script cannot forge it), and `next dev` is pinned to `127.0.0.1`.
+Anything able to reach `:3000` could submit an approval for a production
+rollback, with no credential of its own.
+
+Two controls, because they cover different callers:
+
+- **Cross-origin browser requests** are refused via `Sec-Fetch-Site`. Browsers
+  set it and script cannot forge it, so a page in another tab cannot `fetch()`
+  an approval.
+- **Local processes** are refused by the **operator token**. `Sec-Fetch-Site` is
+  a browser signal — a local `curl` sends none at all, so the origin check alone
+  left reachability sufficient for authority. State-changing methods now require
+  `SENTINEL_UI_TOKEN` in an `x-sentinel-operator` header. The server never sends
+  that value to the browser: the operator supplies it once and it is held in
+  `sessionStorage` for that tab.
+
+A header rather than a cookie, deliberately: cookies are attached automatically,
+which is the mechanism that makes CSRF possible. A value that must be read and
+set explicitly cannot ride along on a request the page never made.
+
+The check **fails closed**. If `SENTINEL_UI_TOKEN` is unset, mutations are
+refused rather than allowed — an unset credential must never mean "no check
+needed", because that disables the guard in exactly the deployment that never
+configured it.
+
+Read paths are ungated. Investigation is read-only and needs no credential, so
+gating it would put a login wall in front of a local tool for no benefit — and
+would train the operator to paste the token reflexively, which is the opposite of
+the intent.
 
 ### What is deliberately not modelled
 
-There is **no operator identity and no approver authorisation**. Whoever has the
-browser open is the approver, and the trust boundary is the machine. That is
-honest for a single-operator local tool, and it is why both mitigations above are
-about *reachability* rather than *identity*.
+The operator token proves *a* secret was held. It does not prove **which human**
+is approving.
 
-A real deployment needs more: an identity provider in front of the UI, a rule
-about which humans may approve which classes of action, and an audit trail
-attributing each approval to a person rather than to "the browser". The estate's
-`/estate/audit` records that a rollback happened and what it changed; it cannot
-record *who* authorised it, because nothing here knows. Adding a half-built
-auth scheme would imply a guarantee that does not exist, so the boundary is
-documented instead.
+A hostile process running as the **same OS user** can read `.env` and obtain the
+token. That is not fixable by any secret this app could hold: the credential has
+to live somewhere, and same-user access reads it wherever it lives. What the token
+buys is that reachability is no longer authority — a process must now deliberately
+go and read the operator's configuration rather than simply POST to an open port.
+
+Genuine multi-operator authorisation needs an identity provider in front of the
+UI, a rule about which humans may approve which classes of action, and an audit
+trail attributing each approval to a person. The estate's `/estate/audit` records
+that a rollback happened and what it changed; it cannot record *who* authorised
+it, because nothing here knows.
 
 ## Credential boundaries
 

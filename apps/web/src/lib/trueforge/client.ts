@@ -13,6 +13,8 @@
 
 import { TrueForge } from '@truefoundry/trueforge-sdk';
 
+import { loadOperatorToken, OPERATOR_TOKEN_HEADER } from '@/lib/operatorToken';
+
 /** Path prefix served by `app/tf/[...path]/route.ts`. */
 export const PROXY_PREFIX = '/tf';
 
@@ -28,6 +30,12 @@ export function createClient(): TrueForge {
   return new TrueForge({
     baseUrl: `${window.location.origin}${PROXY_PREFIX}`,
     timeoutInSeconds: TIMEOUT_SECONDS,
+    headers: {
+      // A supplier, not a literal: the token can be entered after the client is
+      // constructed, and the SDK re-reads suppliers per request. Passing the
+      // value directly would freeze whatever was in storage at construction.
+      [OPERATOR_TOKEN_HEADER]: () => loadOperatorToken(),
+    },
   });
 }
 

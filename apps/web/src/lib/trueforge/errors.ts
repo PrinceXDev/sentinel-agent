@@ -86,3 +86,33 @@ export function describeError(error: unknown): string {
 
   return 'Something failed and produced no message. Check the browser console and the harness logs.';
 }
+
+/** Marker the proxy puts on a refusal, so it can be told from a harness 403. */
+const PROXY_FORBIDDEN = 'forbidden';
+
+/**
+ * Whether this failure was the proxy refusing a state-changing call for want of
+ * a valid operator token.
+ *
+ * Distinguished from a harness 403 (which means "not your session") because the
+ * two need different responses from the UI: one is fixed by entering a token, the
+ * other is not fixable at all. Matching on the `error` discriminator rather than
+ * the status code is what keeps them apart.
+ */
+export function isOperatorTokenRefusal(error: unknown): boolean {
+  if (!(error instanceof TrueForgeError) || error.statusCode !== 403) return false;
+
+  const body = error.body;
+  if (isRecord(body)) return body.error === PROXY_FORBIDDEN;
+
+  if (typeof body === 'string' && body.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      return isRecord(parsed) && parsed.error === PROXY_FORBIDDEN;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}

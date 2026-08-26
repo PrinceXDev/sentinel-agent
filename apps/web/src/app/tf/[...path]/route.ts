@@ -19,6 +19,7 @@
  * response or a session mutation would be actively wrong.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,18 @@ export const runtime = 'nodejs';
 
 const UPSTREAM = process.env.TRUEFORGE_BASE_URL ?? 'http://localhost:8790';
 const TOKEN = process.env.TRUEFORGE_TOKEN ?? '';
+
+/**
+ * Secret required on state-changing requests. Read server-side only and never
+ * rendered into the page — see `lib/operatorToken.ts` for the reasoning.
+ *
+ * Unset means mutations are refused outright rather than allowed. An unset
+ * credential must never mean "no check": that is how a guard becomes a no-op in
+ * exactly the deployment that most needs it.
+ */
+const OPERATOR_TOKEN = process.env.SENTINEL_UI_TOKEN?.trim() ?? '';
+
+const OPERATOR_TOKEN_HEADER = 'x-sentinel-operator';
 
 /**
  * Request headers worth forwarding. An allowlist rather than a blocklist —
@@ -71,25 +84,60 @@ const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * `Sec-Fetch-Site` at all and are allowed, which is deliberate: this is a
  * same-origin browser guard, not an authentication system.
  *
+ *  3. **Local processes.** `Sec-Fetch-Site` is a browser signal. A local `curl`
+ *     sends none at all, so the origin check alone left reachability sufficient
+ *     for authority — anything able to POST to `:3000` could approve a rollback.
+ *     The operator token closes that: mutations require a secret the server never
+ *     sends to the browser.
+ *
  * ## What this deliberately does not do
  *
- * It does not authenticate *who* the operator is, and it does not model an
- * approver identity. sentinel-agent is a single-operator local tool: whoever has
- * the browser open is the approver, and the trust boundary is the machine. Real
- * multi-user deployment needs an identity provider and a rule about which
- * humans may approve which actions — see docs/architecture.md § Trust model.
- * Inventing a half-authentication scheme here would suggest a guarantee that
- * does not exist.
+ * It does not model *which human* is approving. A hostile process running as the
+ * same OS user can read `.env` and obtain the token — unavoidable, since the
+ * credential must live somewhere that user can read. What changes is that
+ * reachability is no longer authority.
+ *
+ * Genuine multi-operator authorisation needs an identity provider in front of the
+ * UI and a rule about which humans may approve which actions. See
+ * docs/architecture.md § Trust model.
  */
 function denyReason(req: NextRequest): string | null {
   if (!MUTATING_METHODS.has(req.method)) return null;
 
+  // Origin check first: it is the cheaper signal and catches browser CSRF.
   const site = req.headers.get('sec-fetch-site');
   if (site && site !== 'same-origin' && site !== 'none') {
     return `Cross-origin ${req.method} to the harness proxy is refused (Sec-Fetch-Site: ${site}). Approvals may only be submitted from the sentinel-agent UI itself.`;
   }
 
+  // Fail closed when unconfigured. Treating an unset token as "no check needed"
+  // would disable the guard precisely where it was never set up.
+  if (!OPERATOR_TOKEN) {
+    return `${req.method} refused: SENTINEL_UI_TOKEN is not configured on the server, so state-changing calls cannot be authorised. Set it in .env and enter the same value in the UI.`;
+  }
+
+  const presented = req.headers.get(OPERATOR_TOKEN_HEADER)?.trim() ?? '';
+  if (!presented) {
+    return `${req.method} refused: missing operator token. State-changing calls must present ${OPERATOR_TOKEN_HEADER}.`;
+  }
+  if (!constantTimeEquals(presented, OPERATOR_TOKEN)) {
+    return `${req.method} refused: operator token does not match.`;
+  }
+
   return null;
+}
+
+/**
+ * Compare without leaking length or content through timing.
+ *
+ * `timingSafeEqual` throws on differing lengths, which would itself be a signal,
+ * so length is checked first and reported as a plain mismatch.
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }
 
 function buildUpstreamUrl(req: NextRequest, segments: string[]): string {

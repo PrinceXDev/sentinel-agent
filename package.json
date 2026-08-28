@@ -23,7 +23,12 @@
     "format": "biome format --write .",
     "check": "biome check --write .",
     "ci": "biome ci . && npm run typecheck && npm run test",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "provision": "node scripts/provision.mjs",
+    "prove:gate": "node scripts/prove-gate.mjs",
+    "dev:mcp:lab": "OPS_LAB_MODE=1 npm run dev:mcp",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10",

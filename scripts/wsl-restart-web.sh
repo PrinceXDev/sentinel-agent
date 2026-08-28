@@ -8,6 +8,10 @@
 # same as scripts/wsl-up.sh.
 set -uo pipefail
 cd "$HOME/sentinel-agent"
+# Put the WSL-native Node >= 22.14 on PATH. Without this the script runs with
+# the Windows Node injected by WSL interop. See scripts/wsl-node.sh.
+# shellcheck source=scripts/wsl-node.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/wsl-node.sh"
 
 PID=$(ss -ltnp 2>/dev/null | grep ':3000 ' | grep -oP 'pid=\K[0-9]+' | head -1)
 if [ -n "${PID:-}" ]; then

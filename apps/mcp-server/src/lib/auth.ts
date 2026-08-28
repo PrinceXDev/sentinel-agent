@@ -43,6 +43,53 @@ export interface AuthPosture {
   readonly loopbackOnly: boolean;
 }
 
+/**
+ * The lab-surface token. Separate from `OPS_MCP_TOKEN`, deliberately.
+ *
+ * The obvious design is to reuse `OPS_MCP_TOKEN` for the lab endpoints. It was
+ * tried and rejected, because `checkMcpAuth` applies to *every* endpoint: setting
+ * that variable makes the ordinary `/mcp` surface require a bearer token too, and
+ * the harness reaches `/mcp` through a connector whose auth header can only be
+ * set at creation — the API exposes list/create/get and no update or delete
+ * (verified: PUT and DELETE both 404). So reusing it would mean deleting and
+ * recreating the working connector by hand in the UI before the conformance suite
+ * could run, and would break the documented one-command local setup that a
+ * stranger cloning this repo depends on.
+ *
+ * A dedicated token avoids all of that. The normal path keeps its documented
+ * posture — loopback only, no token — and the dangerous surface gets a key of its
+ * own, carried by a connector that `provision --lab` creates fresh with the right
+ * header already attached. Nothing existing has to be touched.
+ */
+const LAB_TOKEN = process.env.OPS_LAB_TOKEN?.trim() ?? '';
+
+export function isLabTokenConfigured(): boolean {
+  return LAB_TOKEN.length > 0;
+}
+
+/**
+ * Authenticate a request to a lab-only endpoint.
+ *
+ * Unlike `checkMcpAuth`, this has **no unauthenticated mode**. There is no
+ * posture in which an approval-exempt destructive tool should answer an
+ * anonymous caller, so a missing token is a rejection here rather than a
+ * documented trade-off. `index.ts` additionally refuses to mount these routes at
+ * all without a token, making this the second of two independent guards.
+ */
+export function checkLabAuth(authorizationHeader: string | undefined): string | null {
+  if (!LAB_TOKEN) return 'lab_token_not_configured';
+  if (!authorizationHeader) return 'missing_authorization_header';
+
+  const [scheme, ...rest] = authorizationHeader.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer') return 'unsupported_auth_scheme';
+
+  const provided = rest.join(' ').trim();
+  if (!provided) return 'empty_bearer_token';
+  if (!tokensMatch(provided, LAB_TOKEN)) return 'token_mismatch';
+
+  return null;
+}
+
 /** Constant-time compare, so a wrong token cannot be discovered byte by byte. */
 function tokensMatch(provided: string, expected: string): boolean {
   const a = Buffer.from(provided);

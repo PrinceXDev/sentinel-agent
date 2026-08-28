@@ -35,3 +35,15 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Agent skills installed by `npx skills add`.
+#
+# `skills-lock.json` IS committed — it pins source and content hash, so
+# `npx skills add` reproduces the same skills for anyone cloning.
+#
+# The installed copies are not. `.claude/skills/*` are absolute symlinks into
+# this checkout (/d/Home Workspace/...), which resolve to nothing on another
+# machine, in CI, or under WSL — committing them would ship a broken path and
+# call it configuration.
+.agents/
+.claude/skills/

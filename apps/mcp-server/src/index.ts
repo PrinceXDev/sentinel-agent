@@ -17,14 +17,16 @@
  * worth more than one record everyone trusts.
  */
 
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import express, { type Request, type Response } from 'express';
 import { SERVICE } from './domain/fixtures.js';
 import { estate } from './domain/store.js';
-import { checkMcpAuth, reportPosture } from './lib/auth.js';
+import { checkLabAuth, checkMcpAuth, isLabTokenConfigured, reportPosture } from './lib/auth.js';
 import { logger } from './lib/logger.js';
 import { connectTransport, createStatelessTransport } from './lib/mcpCompat.js';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from './server.js';
 import { allTools } from './tools/index.js';
+import { buildUnsafeServer, UNSAFE_SERVER_NAME, UNSAFE_TWIN_TOOL } from './tools/unsafeTwin.js';
 
 const PORT = Number(process.env.OPS_MCP_PORT ?? 8940);
 
@@ -53,6 +55,44 @@ const ALLOWED_ESTATE_ORIGINS = (
   .map((o) => o.trim())
   .filter(Boolean);
 
+/**
+ * Lab mode — off unless explicitly enabled.
+ *
+ * Adds two surfaces that exist purely so `npm run prove:gate` can run the
+ * approval-gate conformance probes:
+ *
+ *   POST /mcp-unsafe     the unannotated twin (see tools/unsafeTwin.ts)
+ *   POST /estate/reset   restore the seeded fixture between probes
+ *
+ * Both are absent from the default configuration. That matters: the twin is a
+ * destructive tool that deliberately publishes no annotations, so it is exempt
+ * from the harness approval gate by construction. It must never be reachable in
+ * a normal run, and requiring an explicit opt-in is what guarantees that a
+ * misconfiguration cannot quietly expose it.
+ */
+const LAB_MODE_REQUESTED = process.env.OPS_LAB_MODE?.trim() === '1';
+
+/**
+ * Lab mode requires a token. No exceptions, and this is why.
+ *
+ * `checkMcpAuth` returns "allowed" for every request when `OPS_MCP_TOKEN` is
+ * unset — that is the documented default, and for `/mcp` it is a defensible
+ * trade: loopback binding removes the network, and a tool reached through the
+ * harness still meets the approval gate.
+ *
+ * Neither of those consolations applies to the lab surface. The twin is
+ * *designed* to be exempt from the gate, so reaching it is unconditionally an
+ * ungated production mutation, and `POST /estate/reset` destroys the audit log
+ * that the conformance suite uses as its independent oracle. Leaving those open
+ * to any local process — a browser tab, an npm postinstall, another dev tool —
+ * would be a strictly worse version of the finding Qodo raised on PR #1, which
+ * was precisely that a destructive tool was reachable without passing the gate.
+ *
+ * So the flag alone does not enable it. Requested-but-unauthenticated is refused
+ * and logged, rather than quietly downgraded to the weaker posture.
+ */
+const LAB_MODE = LAB_MODE_REQUESTED && isLabTokenConfigured();
+
 const app = express();
 app.use(express.json({ limit: '4mb' }));
 
@@ -71,13 +111,26 @@ app.use('/estate', (req, res, next) => {
   next();
 });
 
-app.post('/mcp', async (req: Request, res: Response) => {
+/**
+ * Serve one MCP request against a freshly-built server.
+ *
+ * Parameterised by the builder so `/mcp` and `/mcp-unsafe` share one
+ * authentication path, one error policy, and one lifecycle. Duplicating this for
+ * the twin would risk the two endpoints drifting — and the probe result only
+ * means anything if the *only* difference between them is the annotations.
+ */
+async function serveMcp(
+  req: Request,
+  res: Response,
+  build: () => McpServer,
+  label: string,
+): Promise<void> {
   // The harness enforces approval, not this server — so a caller who reaches
   // `/mcp` directly never encounters the gate at all. Authenticate before doing
   // anything else. See lib/auth.ts.
   const rejection = checkMcpAuth(req.headers.authorization);
   if (rejection) {
-    logger.warn('mcp.unauthorized', { reason: rejection, ip: req.ip });
+    logger.warn('mcp.unauthorized', { reason: rejection, ip: req.ip, endpoint: label });
     res.status(401).json({
       jsonrpc: '2.0',
       error: { code: -32001, message: 'Unauthorized' },
@@ -90,7 +143,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
   // request/response, so there is no session state worth keeping. Estate state
   // lives in the process-wide store instead — see server.ts.
   try {
-    const server = buildServer();
+    const server = build();
     const transport = createStatelessTransport();
 
     res.on('close', () => {
@@ -102,6 +155,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     logger.error('mcp.request_failed', {
+      endpoint: label,
       error: error instanceof Error ? error.message : String(error),
     });
     if (!res.headersSent) {
@@ -112,7 +166,56 @@ app.post('/mcp', async (req: Request, res: Response) => {
       });
     }
   }
-});
+}
+
+app.post('/mcp', (req, res) => serveMcp(req, res, buildServer, '/mcp'));
+
+if (LAB_MODE) {
+  /**
+   * The unannotated twin. Lab mode only.
+   *
+   * Register this in the harness as a second connector named
+   * `sentinel-ops-unsafe`, then run `npm run prove:gate`. Everything about it is
+   * identical to `rollback_deployment` except that it publishes no annotations,
+   * which is what makes it exempt from `require_approval_for_tools`.
+   */
+  app.post('/mcp-unsafe', (req, res) => {
+    const rejection = checkLabAuth(req.headers.authorization);
+    if (rejection) {
+      logger.warn('lab.unauthorized', { reason: rejection, ip: req.ip, endpoint: '/mcp-unsafe' });
+      res.status(401).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Unauthorized' },
+        id: null,
+      });
+      return;
+    }
+    // `serveMcp` re-checks `checkMcpAuth`, which is a no-op unless OPS_MCP_TOKEN
+    // is also set. The lab check above is the one that actually guards this route.
+    return serveMcp(req, res, buildUnsafeServer, '/mcp-unsafe');
+  });
+
+  /**
+   * Restore the seeded estate. Lab mode only.
+   *
+   * The probes mutate production state on purpose — a bypass is only proven by
+   * the mutation actually landing — so each one has to start from the same
+   * fixture or the second probe measures the first probe's damage. Guarded by
+   * the same flag as the twin rather than a separate one: both exist solely to
+   * serve `prove:gate`, and two flags would let someone enable half of it.
+   */
+  app.post('/estate/reset', (req, res) => {
+    const rejection = checkLabAuth(req.headers.authorization);
+    if (rejection) {
+      logger.warn('estate.reset_unauthorized', { reason: rejection, ip: req.ip });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    estate.reset();
+    logger.info('estate.reset', { via: 'lab-mode' });
+    res.json({ ok: true, reset_at: new Date().toISOString() });
+  });
+}
 
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, server: SERVER_NAME, version: SERVER_VERSION });
@@ -155,7 +258,33 @@ const server = app.listen(PORT, HOST, () => {
     approval_gated: gated.map((t) => t.name),
     loopback_only: posture.loopbackOnly,
     token_required: posture.tokenRequired,
+    lab_mode: LAB_MODE,
   });
+
+  // Lab mode exposes a destructive tool that is exempt from the approval gate by
+  // construction. That is the point of it, and it is also exactly the sort of
+  // thing that must never be running without the operator knowing, so it is
+  // logged at `error` — the same level as the insecure-posture warning.
+  if (LAB_MODE_REQUESTED && !LAB_MODE) {
+    logger.error('mcp.lab_mode_refused', {
+      detail:
+        'OPS_LAB_MODE=1 but OPS_LAB_TOKEN is not set. Lab mode exposes an ' +
+        'approval-exempt destructive tool and an audit-log reset, so it is refused ' +
+        'rather than served unauthenticated. Set OPS_LAB_TOKEN, register it as ' +
+        'Header auth on the sentinel-ops-unsafe connector (npm run provision -- --lab does this), and restart.',
+    });
+  }
+
+  if (LAB_MODE) {
+    logger.error('mcp.lab_mode_active', {
+      unsafe_endpoint: `http://${HOST}:${PORT}/mcp-unsafe`,
+      unsafe_server: UNSAFE_SERVER_NAME,
+      unsafe_tool: UNSAFE_TWIN_TOOL,
+      detail:
+        'OPS_LAB_MODE=1. The unannotated twin and POST /estate/reset are reachable. ' +
+        'Intended only for `npm run prove:gate`. Unset OPS_LAB_MODE for normal runs.',
+    });
+  }
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

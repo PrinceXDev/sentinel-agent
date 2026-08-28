@@ -83,12 +83,30 @@ const env = { ...readEnvFile(), ...process.env };
 const LAB = process.argv.includes('--lab');
 
 const PORT = env.OPS_MCP_PORT || '8940';
+
 /**
- * Loopback, because that is where the ops server binds and the harness runs on
- * the same host. `localhost` rather than `127.0.0.1` would also work, but the
- * server logs `127.0.0.1` and matching it keeps the two readable side by side.
+ * Where the harness should reach the ops server.
+ *
+ * Derived from `OPS_MCP_HOST`, the same variable the server binds to and doctor
+ * probes. Hardcoding loopback here was wrong: a server deliberately bound to a
+ * specific interface need not accept traffic addressed to `127.0.0.1`, so the
+ * generated connectors would point at an address nothing was listening on — and
+ * the resulting failure surfaces as a tool-loading error, not a connection one.
+ *
+ * Wildcard binds are the exception. `0.0.0.0` and `::` mean "every interface",
+ * which is a *listen* address and not a valid destination, so those are mapped
+ * to loopback — the one address a wildcard bind is guaranteed to answer on from
+ * the same host.
  */
-const OPS_BASE = `http://127.0.0.1:${PORT}`;
+const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '[::]', '*']);
+const CONFIGURED_HOST = env.OPS_MCP_HOST?.trim() || '127.0.0.1';
+const OPS_HOST = WILDCARD_HOSTS.has(CONFIGURED_HOST) ? '127.0.0.1' : CONFIGURED_HOST;
+
+/** Bracket a bare IPv6 literal so it is a valid URL authority. */
+const OPS_AUTHORITY =
+  OPS_HOST.includes(':') && !OPS_HOST.startsWith('[') ? `[${OPS_HOST}]` : OPS_HOST;
+
+const OPS_BASE = `http://${OPS_AUTHORITY}:${PORT}`;
 
 /**
  * The repository the skill is loaded from.

@@ -124,11 +124,24 @@ async function serveMcp(
   res: Response,
   build: () => McpServer,
   label: string,
+  /**
+   * The authentication policy for this endpoint.
+   *
+   * Explicit per endpoint, because the two surfaces are guarded by different
+   * secrets and a connector sends exactly one Authorization header. `/mcp-unsafe`
+   * previously ran `checkLabAuth` and then reached here, which ran
+   * `checkMcpAuth` against the *same* header — so whenever both tokens were set
+   * and differed, the lab connector's header satisfied the first check and
+   * failed the second, and every twin request 401'd. That is the documented
+   * `provision --lab` setup on a secured deployment, so the conformance suite
+   * would have been unable to run precisely where it matters most.
+   */
+  authenticate: (header: string | undefined) => string | null = checkMcpAuth,
 ): Promise<void> {
   // The harness enforces approval, not this server — so a caller who reaches
   // `/mcp` directly never encounters the gate at all. Authenticate before doing
   // anything else. See lib/auth.ts.
-  const rejection = checkMcpAuth(req.headers.authorization);
+  const rejection = authenticate(req.headers.authorization);
   if (rejection) {
     logger.warn('mcp.unauthorized', { reason: rejection, ip: req.ip, endpoint: label });
     res.status(401).json({
@@ -179,21 +192,13 @@ if (LAB_MODE) {
    * identical to `rollback_deployment` except that it publishes no annotations,
    * which is what makes it exempt from `require_approval_for_tools`.
    */
-  app.post('/mcp-unsafe', (req, res) => {
-    const rejection = checkLabAuth(req.headers.authorization);
-    if (rejection) {
-      logger.warn('lab.unauthorized', { reason: rejection, ip: req.ip, endpoint: '/mcp-unsafe' });
-      res.status(401).json({
-        jsonrpc: '2.0',
-        error: { code: -32001, message: 'Unauthorized' },
-        id: null,
-      });
-      return;
-    }
-    // `serveMcp` re-checks `checkMcpAuth`, which is a no-op unless OPS_MCP_TOKEN
-    // is also set. The lab check above is the one that actually guards this route.
-    return serveMcp(req, res, buildUnsafeServer, '/mcp-unsafe');
-  });
+  // Guarded by the lab token and *only* the lab token. Passing `checkLabAuth`
+  // as the policy replaces the default rather than adding to it, so the single
+  // Authorization header the connector sends is checked exactly once, against
+  // the secret that actually protects this route.
+  app.post('/mcp-unsafe', (req, res) =>
+    serveMcp(req, res, buildUnsafeServer, '/mcp-unsafe', checkLabAuth),
+  );
 
   /**
    * Restore the seeded estate. Lab mode only.

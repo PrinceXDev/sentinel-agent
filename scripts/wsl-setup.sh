@@ -24,7 +24,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Put the WSL-native Node >= 22.14 on PATH. Without this the script runs with
 # the Windows Node injected by WSL interop. See scripts/wsl-node.sh.
 # shellcheck source=scripts/wsl-node.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/wsl-node.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/wsl-node.sh" || exit 1
 DEST="$HOME/sentinel-agent"
 
 echo "==> mirroring $SRC -> $DEST"

@@ -1,0 +1,135 @@
+name: CI
+
+# Runs on every PR and on main. The PR run is the one that matters: it is the
+# gate a change passes through before Qodo and a human look at it, and the same
+# command developers run locally via the pre-push hook.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR makes the previous run irrelevant. Cancelling keeps the
+# queue honest instead of reporting on a commit nobody is looking at any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: lint · types · tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # TrueForge's floor is 22.14, and the repo declares `engines.node >=22.14.0`.
+          # Pinning the major here keeps CI honest about the version the project
+          # actually claims to support.
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint, typecheck, test
+        # The single source of truth for "does this pass" — identical to what
+        # .githooks/pre-push runs. Two definitions would drift.
+        run: npm run ci
+
+  safety-model:
+    name: approval gate — annotations on the wire
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The unit tests assert that every registered tool carries annotations.
+      # This job asserts something stricter and more useful: that the annotations
+      # survive serialisation and arrive over MCP, because that is the only form
+      # the harness ever sees. A tool correctly annotated in TypeScript but
+      # dropped by an SDK version in transit is exempt from the approval gate and
+      # every unit test still passes — which is precisely the silent failure this
+      # project exists to prevent.
+      - name: Start ops MCP server
+        run: |
+          npm run dev:mcp > /tmp/mcp.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8940/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::ops MCP server did not become healthy"
+          cat /tmp/mcp.log
+          exit 1
+
+      - name: Assert every tool is annotated
+        run: |
+          RESPONSE=$(curl -s -X POST http://127.0.0.1:8940/mcp \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')
+
+          # The streamable-HTTP transport may reply as SSE, so the JSON payload
+          # can arrive prefixed with `data: `. Strip it before parsing rather
+          # than assuming a bare body.
+          BODY=$(printf '%s' "$RESPONSE" | sed -n 's/^data: //p' | tail -1)
+          [ -z "$BODY" ] && BODY="$RESPONSE"
+
+          printf '%s' "$BODY" | node -e '
+            let raw = "";
+            process.stdin.on("data", (c) => (raw += c)).on("end", () => {
+              let tools;
+              try {
+                tools = JSON.parse(raw).result.tools;
+              } catch (e) {
+                console.error("::error::could not parse tools/list response:", e.message);
+                console.error(raw.slice(0, 800));
+                process.exit(1);
+              }
+
+              // Mirrors TrueForge`s own selector predicates. Asserting against
+              // our RiskClass label instead would only confirm we agree with
+              // ourselves; this checks the wire format the harness reads.
+              const unannotated = tools.filter((t) => {
+                const a = t.annotations;
+                if (!a) return true;
+                return a.readOnlyHint !== true && a.readOnlyHint !== false;
+              });
+
+              const gated = tools.filter(
+                (t) => t.annotations?.destructiveHint === true ||
+                  (t.annotations?.readOnlyHint === false && t.annotations?.destructiveHint !== true),
+              );
+
+              console.log(`tools: ${tools.length}, unannotated: ${unannotated.length}, approval-gated: ${gated.length}`);
+
+              if (unannotated.length > 0) {
+                console.error(
+                  "::error::unannotated tools reach the wire and are therefore EXEMPT from the approval gate: " +
+                    unannotated.map((t) => t.name).join(", "),
+                );
+                process.exit(1);
+              }
+
+              // A registry with no gated tool means the approval gate is
+              // configured but guards nothing — passing for the wrong reason.
+              if (gated.length === 0) {
+                console.error("::error::no approval-gated tools found; the gate guards nothing");
+                process.exit(1);
+              }
+            });
+          '
+
+      - name: Server log on failure
+        if: failure()
+        run: cat /tmp/mcp.log || true

@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+# Full gate. Runs before a push — the last point before code reaches a PR.
+#
+# This is where the whole suite runs, because a push is the action that puts code
+# in front of Qodo and a human. A few extra seconds here is the cheapest possible
+# place to spend them.
+#
+# `npm run ci` is deliberately the same command GitHub Actions runs. Two
+# definitions of "does this pass" drift, and the one that drifts is always the
+# local one — so there is exactly one, in package.json, and both callers invoke it.
+#
+# Bypass with `git push --no-verify`. If you find yourself doing that routinely,
+# the suite is wrong and should be fixed rather than routed around.
+
+set -e
+
+printf '\n\033[1mpre-push\033[0m \033[2m— full CI suite (same command GitHub Actions runs)\033[0m\n\n'
+
+if ! npm run ci --silent; then
+  printf '\n\033[31m✗ pre-push failed.\033[0m\n'
+  printf '\033[2m  This is what CI will report on the PR. Fix it before pushing.\033[0m\n'
+  printf '\033[2m  To bypass deliberately: git push --no-verify\033[0m\n\n'
+  exit 1
+fi
+
+printf '\n\033[32mpre-push passed.\033[0m\n\n'

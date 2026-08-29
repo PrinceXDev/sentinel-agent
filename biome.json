@@ -13,7 +13,9 @@
       "!**/.next",
       "!**/coverage",
       "!**/next-env.d.ts",
-      "!apps/web/tsconfig.json"
+      "!apps/web/tsconfig.json",
+      "!reports",
+      "!.agents"
     ]
   },
   "formatter": {

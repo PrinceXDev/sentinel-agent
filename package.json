@@ -17,13 +17,19 @@
     "dev:mcp": "npm run dev --workspace @sentinel-agent/mcp-server",
     "dev:web": "npm run dev --workspace @sentinel-agent/web",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:scripts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "check": "biome check --write .",
     "ci": "biome ci . && npm run typecheck && npm run test",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "provision": "node scripts/provision.mjs",
+    "prove:gate": "node scripts/prove-gate.mjs",
+    "dev:mcp:lab": "OPS_LAB_MODE=1 npm run dev:mcp",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "test:scripts": "vitest run --config vitest.scripts.config.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10",

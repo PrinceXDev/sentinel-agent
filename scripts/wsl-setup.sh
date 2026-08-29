@@ -13,10 +13,18 @@
 # so it is reinstalled here.
 #
 # Usage, from the repository root on Windows:
-#   wsl -d Ubuntu-24.04 -- bash /mnt/d/Training/Agent\ Harness/scripts/wsl-setup.sh
+#   wsl -d Ubuntu -- bash "$(wslpath -a ./scripts/wsl-setup.sh)"
 set -euo pipefail
 
-SRC="/mnt/d/Training/Agent Harness"
+# Derived from this script's own location rather than hardcoded. The tree has
+# already moved once (D:\Training\Agent Harness -> D:\Home Workspace\sentinel-agent),
+# and a hardcoded SRC fails by mirroring a stale or absent directory rather than
+# by erroring, which is the worst way for a sync script to be wrong.
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Put the WSL-native Node >= 22.14 on PATH. Without this the script runs with
+# the Windows Node injected by WSL interop. See scripts/wsl-node.sh.
+# shellcheck source=scripts/wsl-node.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/wsl-node.sh" || exit 1
 DEST="$HOME/sentinel-agent"
 
 echo "==> mirroring $SRC -> $DEST"

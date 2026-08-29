@@ -160,7 +160,21 @@ export class EstateStore {
    * The only method in this class that changes production state, and the reason
    * the `rollback_deployment` tool is annotated `destructiveHint: true`.
    */
-  rollbackDeployment(deploymentId: string, actor: string): RollbackResult {
+  rollbackDeployment(
+    deploymentId: string,
+    actor: string,
+    /**
+     * Which tool performed this, for the audit entry.
+     *
+     * Defaulted rather than required so every existing caller is unchanged. It
+     * exists because the audit log is used as an *independent oracle* — by
+     * `prove:gate` and by the UI's cross-check — and an oracle that reports the
+     * wrong tool name is worse than no oracle. The unannotated twin performs the
+     * identical mutation, and hardcoding the name here attributed its bypass to
+     * the very tool whose gate had just been demonstrated to work.
+     */
+    tool: string = 'rollback_deployment',
+  ): RollbackResult {
     const target = this.getDeployment(deploymentId);
     if (!target) {
       throw new EstateError(`Unknown deployment: ${deploymentId}`);
@@ -191,7 +205,7 @@ export class EstateStore {
     this.#incident.status = 'mitigated';
 
     this.#record(
-      'rollback_deployment',
+      tool,
       actor,
       `Rolled ${target.service} back from ${target.id} to ${predecessor.id}`,
       {

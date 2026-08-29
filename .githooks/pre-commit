@@ -1,0 +1,45 @@
+#!/usr/bin/env sh
+# Fast gate. Runs before every commit; must stay under ~15s or it gets bypassed.
+#
+# ## What this is for
+#
+# Qodo reviews pull requests, not commits — there is no way to invoke its review
+# from a hook. So this does not "run Qodo early". It removes the classes of
+# finding that are mechanical, so the PR review is spent on the ones that are
+# not: the six findings Qodo raised on PR #1 were auth, network binding,
+# error-path state, a race, a stale derived value, and weak validation. None of
+# those are catchable by a linter, and pretending otherwise is how a gate ends up
+# providing false assurance.
+#
+# What it does catch, before it ever reaches a reviewer: formatting drift, lint
+# violations, and — the one that matters here — a type error or an unannotated
+# tool, which would otherwise be found by a human reading a diff.
+#
+# Deliberately not running the full test suite: that belongs in pre-push, where a
+# few extra seconds are affordable. A slow pre-commit hook is a disabled
+# pre-commit hook.
+#
+# Bypass with `git commit --no-verify` when you genuinely need to (a WIP commit
+# on a scratch branch). Do not make a habit of it on anything that will be pushed.
+
+set -e
+
+printf '\n\033[1mpre-commit\033[0m \033[2m— lint, format, types\033[0m\n\n'
+
+fail() {
+  printf '\n\033[31m✗ pre-commit failed:\033[0m %s\n' "$1"
+  printf '\033[2m  Fix it, or run `npm run check` to auto-fix formatting and lint.\033[0m\n'
+  printf '\033[2m  To bypass deliberately: git commit --no-verify\033[0m\n\n'
+  exit 1
+}
+
+# `biome ci` rather than `biome check`: ci is read-only and fails on drift.
+# `check --write` here would silently reformat files that are already staged,
+# so the commit would not contain what the hook actually validated.
+npx biome ci . || fail 'biome (lint or format)'
+printf '\033[32m  ✓\033[0m biome\n'
+
+npm run typecheck --silent || fail 'typecheck'
+printf '\033[32m  ✓\033[0m typecheck\n'
+
+printf '\n\033[32mpre-commit passed.\033[0m \033[2mFull suite runs on push.\033[0m\n\n'

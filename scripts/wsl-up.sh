@@ -22,10 +22,21 @@
 #                            LAN. Mutations remain gated by SENTINEL_UI_TOKEN.
 #
 # Run detached from Windows:
-#   wsl -d Ubuntu-24.04 -- bash "/mnt/d/Training/Agent Harness/scripts/wsl-up.sh"
+#   wsl -d Ubuntu -- bash "$HOME/sentinel-agent/scripts/wsl-up.sh"
 set -uo pipefail
 
 cd "$HOME/sentinel-agent"
+# Put the WSL-native Node >= 22.14 on PATH. Without this the script runs with
+# the Windows Node injected by WSL interop. See scripts/wsl-node.sh.
+#
+# The `|| exit 1` is load-bearing. This script uses `set -uo pipefail` without
+# `-e` on purpose, so a sourced helper returning non-zero does NOT stop it — and
+# wsl-node.sh returns 1 for exactly the environments it exists to reject (nvm
+# absent, an interop Windows binary, a Node below 22.14). Without the explicit
+# check it would print its refusal and the script would carry on and launch the
+# services with the runtime it just rejected.
+# shellcheck source=scripts/wsl-node.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/wsl-node.sh" || exit 1
 
 listening() { ss -ltn 2>/dev/null | grep -q ":$1 "; }
 

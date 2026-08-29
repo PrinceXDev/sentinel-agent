@@ -24,7 +24,11 @@ if ! command -v rsync >/dev/null 2>&1; then
   exit 1
 fi
 
-SRC="/mnt/d/Training/Agent Harness"
+# Derived from this script's own location rather than hardcoded. The tree has
+# already moved once (D:\Training\Agent Harness -> D:\Home Workspace\sentinel-agent),
+# and a hardcoded SRC fails by mirroring a stale or absent directory rather than
+# by erroring, which is the worst way for a sync script to be wrong.
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$HOME/sentinel-agent"
 
 # --delete respects --exclude by default (no --delete-excluded here), so

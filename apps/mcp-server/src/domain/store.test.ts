@@ -113,15 +113,37 @@ describe('rollback_deployment', () => {
   });
 
   it('lets the agent verify recovery by re-reading metrics', () => {
-    const beforeTail = estate.getMetrics(SERVICE).at(-1)!.p95_latency_ms;
+    const before = estate.getMetrics(SERVICE);
+    const beforeTail = before.at(-1)!.p95_latency_ms;
+
     estate.rollbackDeployment('dpl-4c21', 'sentinel-agent');
-    const afterTail = estate.getMetrics(SERVICE).at(-1)!.p95_latency_ms;
-    // Recovery decays from the rollback timestamp, which is "now" — later than
-    // every fixture sample — so the visible tail is unchanged. The mechanism is
-    // exercised by the decay branch; what matters is that re-reading is possible
-    // and returns a consistent series.
-    expect(Number.isFinite(afterTail)).toBe(true);
-    expect(Number.isFinite(beforeTail)).toBe(true);
+
+    const after = estate.getMetrics(SERVICE);
+    // New samples arrived; the window did not merely change shape.
+    expect(after.length).toBeGreaterThan(before.length);
+    // And the symptom is visibly resolving, which is what the agent is
+    // instructed to confirm. Anchoring recovery to wall-clock `now` — later than
+    // every fixture sample — made this unobservable.
+    expect(after.at(-1)!.p95_latency_ms).toBeLessThan(beforeTail / 2);
+    expect(after.at(-1)!.p95_latency_ms).toBeLessThan(220);
+  });
+
+  it('does not rewrite the window the agent already analysed', () => {
+    const before = estate.getMetrics(SERVICE).map((s) => ({ ...s }));
+    estate.rollbackDeployment('dpl-4c21', 'sentinel-agent');
+    const after = estate.getMetrics(SERVICE);
+
+    expect(after.slice(0, before.length)).toEqual(before);
+  });
+
+  it('leaves throughput alone while latency recovers', () => {
+    const beforeRps = estate.getMetrics(SERVICE).at(-1)!.rps;
+    estate.rollbackDeployment('dpl-4c21', 'sentinel-agent');
+    const afterRps = estate.getMetrics(SERVICE).at(-1)!.rps;
+
+    // A recovery that also "fixed" a signal that was never broken would be a
+    // tell that the data is synthetic rather than a simulation of one.
+    expect(Math.abs(afterRps - beforeRps)).toBeLessThan(12);
   });
 
   it('records the mutation in the audit log', () => {
@@ -180,5 +202,193 @@ describe('restart_service', () => {
 
   it('refuses an unknown service', () => {
     expect(() => estate.restartService('nope-api', 'sentinel-agent')).toThrow(EstateError);
+  });
+});
+
+describe('preview_remediation', () => {
+  it('describes the rollback transition without performing it', () => {
+    const preview = estate.previewRollback('dpl-4c21');
+
+    expect(preview.executable).toBe(true);
+    expect(preview.changes).toContainEqual({
+      subject: 'dpl-4c21',
+      field: 'status',
+      from: 'live',
+      to: 'rolled_back',
+    });
+    // The point of a dry run: nothing moved.
+    expect(estate.getDeployment('dpl-4c21')?.status).toBe('live');
+    expect(estate.listAudit()).toHaveLength(0);
+  });
+
+  it('agrees with what the real call then does', () => {
+    const preview = estate.previewRollback('dpl-4c21');
+    const promised = new Map(preview.changes.map((c) => [`${c.subject}.${c.field}`, c.to]));
+
+    estate.rollbackDeployment('dpl-4c21', 'sentinel-agent');
+
+    // A preview that could diverge from the call would manufacture confidence
+    // rather than inform it, so this is the assertion that matters most here.
+    expect(estate.getDeployment('dpl-4c21')?.status).toBe(promised.get('dpl-4c21.status'));
+    expect(estate.getDeployment('dpl-4c20')?.status).toBe(promised.get('dpl-4c20.status'));
+    expect(estate.getIncident('INC-2048')?.status).toBe(promised.get('INC-2048.status'));
+  });
+
+  it('reports why a rollback cannot run, rather than throwing', () => {
+    const preview = estate.previewRollback('dpl-4c19');
+    expect(preview.executable).toBe(false);
+    expect(preview.blocked_reason).toMatch(/not live/);
+    expect(preview.changes).toHaveLength(0);
+  });
+
+  it('does not claim a restart is reversible', () => {
+    const preview = estate.previewRestart(SERVICE);
+    expect(preview.executable).toBe(true);
+    // A restart cannot be un-restarted and the dropped requests are gone.
+    expect(preview.reversible).toBe(false);
+    expect(preview.blast_radius).toMatch(/dropped/i);
+  });
+});
+
+const sampleFinding = {
+  incident_id: 'INC-2048',
+  root_cause: 'Upstream timeout raised to 30s with 3 retries against a 400ms budget.',
+  culprit_deployment_id: 'dpl-4c21',
+  recommended_action: 'rollback' as const,
+  confidence: 92,
+  confidence_rationale: 'Mechanism established from the diff; magnitude computed in the sandbox.',
+  evidence: [{ claim: 'p95 rose 3.7x', source: 'sandbox run 1', detail: '178ms → 658ms' }],
+  ruled_out: [{ candidate: 'dpl-4c20', reason: 'Metrics-only change, landed a day earlier.' }],
+  verification_plan: 'Re-read p95 over the 10 minutes after rollback; expect a return under 200ms.',
+  injections_detected: [],
+};
+
+describe('findings', () => {
+  it('records a finding with no audit attached', () => {
+    const finding = estate.recordFinding(sampleFinding);
+
+    expect(finding?.audit).toBeNull();
+    expect(estate.latestFinding()?.confidence).toBe(92);
+    expect(estate.listAudit().at(-1)?.tool).toBe('record_finding');
+  });
+
+  it('refuses a finding against an unknown incident', () => {
+    expect(estate.recordFinding({ ...sampleFinding, incident_id: 'INC-0000' })).toBeUndefined();
+  });
+
+  it('attaches an independent audit and records the confidence gap', () => {
+    estate.recordFinding(sampleFinding);
+    estate.auditFinding('INC-2048', {
+      auditor: 'evidence-auditor',
+      verdict: 'partially_supported',
+      confidence: 68,
+      unsupported_claims: ['p95 rose 3.7x'],
+      gaps: ['No check that rps stayed flat.'],
+      rationale: 'The cited sandbox run is not named precisely enough to re-derive.',
+    });
+
+    expect(estate.latestFinding()?.audit?.verdict).toBe('partially_supported');
+    // The gap between the two numbers is the signal the auditor exists to produce.
+    expect(estate.listAudit().at(-1)?.details.confidence_delta).toBe(-24);
+  });
+
+  it('refuses an audit attributed to the investigating actor', () => {
+    estate.recordFinding(sampleFinding);
+    // The only separation check available: MCP calls carry no caller identity, so
+    // the server cannot otherwise tell the investigator from the reviewer. This
+    // catches the naive self-audit and nothing more, which is why the stored
+    // audit is marked unverified.
+    expect(() =>
+      estate.auditFinding('INC-2048', {
+        auditor: 'sentinel-agent',
+        verdict: 'supported',
+        confidence: 95,
+        unsupported_claims: [],
+        gaps: [],
+        rationale: 'Looks right to me.',
+      }),
+    ).toThrow(/cannot be attributed to sentinel-agent/);
+  });
+
+  it('records the reviewer identity as unverified', () => {
+    estate.recordFinding(sampleFinding);
+    estate.auditFinding('INC-2048', {
+      auditor: 'evidence-auditor',
+      verdict: 'supported',
+      confidence: 90,
+      unsupported_claims: [],
+      gaps: [],
+      rationale: 'x',
+    });
+    // A field rather than a paragraph, so nothing downstream can present a
+    // self-declared reviewer as a confirmed independent one.
+    expect(estate.latestFinding()?.audit?.identity_verified).toBe(false);
+  });
+
+  it('refuses an audit with no finding to audit', () => {
+    expect(
+      estate.auditFinding('INC-2048', {
+        auditor: 'evidence-auditor',
+        verdict: 'supported',
+        confidence: 90,
+        unsupported_claims: [],
+        gaps: [],
+        rationale: 'x',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('keeps superseded findings, so a change of mind is visible', () => {
+    estate.recordFinding(sampleFinding);
+    estate.recordFinding({ ...sampleFinding, confidence: 40, recommended_action: 'no_action' });
+
+    expect(estate.listFindings()).toHaveLength(2);
+    expect(estate.latestFinding()?.recommended_action).toBe('no_action');
+  });
+});
+
+describe('scenarios', () => {
+  it('boots on the checkout regression', () => {
+    expect(estate.scenario.id).toBe('checkout-timeout-retry');
+    expect(estate.service).toBe(SERVICE);
+  });
+
+  it('swaps the whole estate when a scenario is loaded', () => {
+    estate.load('payments-upstream-decoy');
+
+    expect(estate.service).toBe('payments-api');
+    expect(estate.getIncident('INC-2051')).toBeDefined();
+    // The previous scenario's estate is gone, not merged.
+    expect(estate.getIncident('INC-2048')).toBeUndefined();
+    expect(estate.getMetrics(SERVICE)).toHaveLength(0);
+
+    estate.load('checkout-timeout-retry');
+  });
+
+  it('clears findings and audit on a scenario swap', () => {
+    estate.recordFinding(sampleFinding);
+    estate.load('orders-transient-blip');
+
+    expect(estate.listFindings()).toHaveLength(0);
+    expect(estate.listAudit()).toHaveLength(0);
+
+    estate.load('checkout-timeout-retry');
+  });
+
+  it('refuses an unknown scenario rather than silently keeping the current one', () => {
+    expect(() => estate.load('does-not-exist')).toThrow(EstateError);
+    expect(estate.scenario.id).toBe('checkout-timeout-retry');
+  });
+
+  it('recovers toward the loaded scenario baseline, not the checkout one', () => {
+    estate.load('search-injected-note');
+    estate.rollbackDeployment('dpl-9147', 'sentinel-agent');
+
+    const tail = estate.getMetrics('search-api').at(-1)!.p95_latency_ms;
+    // search-api baselines at 310ms; a hardcoded 178 would have been visible here.
+    expect(tail).toBeGreaterThan(280);
+    expect(tail).toBeLessThan(340);
+
+    estate.load('checkout-timeout-retry');
   });
 });

@@ -33,6 +33,27 @@
   --color-gate: #e0a33e;
   --color-gate-dim: #4a3717;
 
+  /*
+   * The independent auditor's voice.
+   *
+   * Deliberately not steel: the audit is not the product speaking, it is a
+   * second opinion that may contradict the first. Giving it the brand accent
+   * would imply the two agree by default, which is exactly the impression the
+   * auditor exists to stop anyone forming.
+   */
+  --color-audit: #8b7fd4;
+  --color-audit-dim: #322b52;
+
+  /*
+   * Injected instructions found in estate content.
+   *
+   * Separate from `danger`, which means "something is broken". This means
+   * "something tried to steer the agent" — a different category, and the one
+   * place in the product where the threat is the input rather than the system.
+   */
+  --color-threat: #d4519a;
+  --color-threat-dim: #4a1c35;
+
   --font-sans:
     var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
@@ -134,4 +155,88 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-strong) transparent;
+}
+
+/*
+ * The gate's arrival.
+ *
+ * The one moment in the product that is allowed to announce itself. Everything
+ * else fades or does nothing; this sweeps in, because an operator who has been
+ * reading a scrolling timeline for ninety seconds needs the interruption to
+ * register as an interruption. Reduced-motion collapses it to an instant
+ * appearance via the global reset above.
+ */
+@keyframes gate-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+}
+.gate-arrive {
+  animation: gate-arrive 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* A slow horizontal pass across the gate's top edge, so the panel reads as held rather than static. */
+@keyframes gate-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.gate-scan::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  block-size: 1px;
+  inline-size: 45%;
+  background: linear-gradient(to right, transparent, var(--color-gate), transparent);
+  animation: gate-scan 3.4s ease-in-out infinite;
+}
+
+/* Draws a confidence arc on mount. `--dash` is set inline from the value. */
+@keyframes arc-draw {
+  from {
+    stroke-dashoffset: var(--arc-length);
+  }
+}
+.arc-draw {
+  animation: arc-draw 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Rows that appear as evidence accumulates. Staggered by inline delay. */
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.row-in {
+  animation: row-in 320ms ease-out both;
+}
+
+/*
+ * Injected-content quotes.
+ *
+ * Rendered on a hatched ground so a passage that is trying to look like a system
+ * directive cannot also look like ordinary product chrome. The texture is the
+ * point: it marks the text as quarantined material being displayed, not as the
+ * interface speaking.
+ */
+.quarantine {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-threat) 8%, transparent) 0px,
+    color-mix(in oklab, var(--color-threat) 8%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
 }

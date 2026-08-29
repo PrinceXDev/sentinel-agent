@@ -15,19 +15,58 @@
 
 import { useEffect, useState } from 'react';
 
-import { type AuditEntry, type EstateState, estate, firstFailure } from '@/lib/estate';
+import {
+  type AuditEntry,
+  type EstateState,
+  estate,
+  type Finding,
+  firstFailure,
+} from '@/lib/estate';
 
 export interface EstateSnapshot {
   state: EstateState | null;
   audit: AuditEntry[] | null;
+  /** Every conclusion recorded this run, oldest first. */
+  findings: Finding[] | null;
+  /** The current conclusion. Null until the agent records one. */
+  finding: Finding | null;
   error: string | null;
   loading: boolean;
 }
+
+/**
+ * One round trip for all three estate reads.
+ *
+ * Separate from the effect so the effect stays a lifecycle concern — subscribe,
+ * guard against a late resolve, unsubscribe — and this stays a data concern.
+ * Each read degrades independently: a findings endpoint that a stale ops server
+ * does not serve leaves the incident header intact rather than blanking the page.
+ */
+const readEstate = async (): Promise<EstateSnapshot> => {
+  const [stateResult, auditResult, findingsResult] = await Promise.all([
+    estate.state(),
+    estate.audit(),
+    estate.findings(),
+  ]);
+
+  const failure = firstFailure([stateResult, auditResult, findingsResult]);
+
+  return {
+    state: stateResult.ok ? stateResult.data : null,
+    audit: auditResult.ok ? auditResult.data.entries : null,
+    findings: findingsResult.ok ? findingsResult.data.findings : null,
+    finding: findingsResult.ok ? findingsResult.data.latest : null,
+    error: failure?.message ?? null,
+    loading: false,
+  };
+};
 
 export const useEstate = (refreshKey: number): EstateSnapshot => {
   const [snapshot, setSnapshot] = useState<EstateSnapshot>({
     state: null,
     audit: null,
+    findings: null,
+    finding: null,
     error: null,
     loading: true,
   });
@@ -42,17 +81,8 @@ export const useEstate = (refreshKey: number): EstateSnapshot => {
     let cancelled = false;
 
     void (async () => {
-      const [stateResult, auditResult] = await Promise.all([estate.state(), estate.audit()]);
-      if (cancelled) return;
-
-      const failure = firstFailure([stateResult, auditResult]);
-
-      setSnapshot({
-        state: stateResult.ok ? stateResult.data : null,
-        audit: auditResult.ok ? auditResult.data.entries : null,
-        error: failure?.message ?? null,
-        loading: false,
-      });
+      const snapshot = await readEstate();
+      if (!cancelled) setSnapshot(snapshot);
     })();
 
     return () => {

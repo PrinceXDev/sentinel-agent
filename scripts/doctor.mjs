@@ -3,12 +3,17 @@
  *
  * ## Why this exists
  *
- * A run needs five separate things configured across two processes and the
- * harness UI: a model, a sandbox provider, an MCP connector, a skill, and an
- * operator token. Any one missing produces a 422 or a 403 *mid-run*, worded from
- * the harness's point of view rather than yours — "a referenced resource is
- * missing" does not tell you which one. This turns that into a checklist you can
- * read before starting.
+ * A run needs six separate things configured across two processes and the
+ * harness UI: a model, a sandbox provider, an MCP connector, a skill, the agent
+ * itself, and an operator token. Any one missing produces a 422 or a 403
+ * *mid-run*, worded from the harness's point of view rather than yours — "a
+ * referenced resource is missing" does not tell you which one. This turns that
+ * into a checklist you can read before starting.
+ *
+ * The agent check goes further than presence. `require_approval_for_tools` is
+ * API-only and invisible in the harness UI, so a saved agent whose policy has
+ * drifted from the committed spec would gate less than this repository claims,
+ * with nothing on screen saying so.
  *
  * ## Why plain `.mjs` and not TypeScript
  *
@@ -30,6 +35,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** Names that must match what the agent spec and harness expect. */
 const EXPECTED_CONNECTOR = 'sentinel-ops';
 const EXPECTED_SKILL = 'incident-response';
+const EXPECTED_AGENT = 'sentinel-agent';
 
 const C = {
   reset: '[0m',
@@ -286,6 +292,7 @@ async function checkHarness(env) {
   await checkSandbox(client);
   await checkConnector(client);
   await checkSkill(client);
+  await checkAgent(client);
 }
 
 /**
@@ -412,6 +419,95 @@ async function checkSkill(client) {
     record(
       'fail',
       `skill '${EXPECTED_SKILL}'`,
+      `could not list (${error instanceof Error ? error.message : error})`,
+    );
+  }
+}
+
+/** The approval selectors the committed spec declares for the ops connector. */
+function committedApprovalPolicy() {
+  try {
+    const spec = JSON.parse(readFileSync(join(ROOT, 'agent', 'sentinel-agent.agent.json'), 'utf8'));
+    return (
+      spec.mcp_servers?.find((m) => m.name === EXPECTED_CONNECTOR)?.require_approval_for_tools ?? []
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The saved agent, and whether its approval policy still matches the repo.
+ *
+ * A registered agent is not enough on its own. `require_approval_for_tools`
+ * lives in the manifest and is API-only — it cannot be set or inspected in the
+ * UI — so a saved agent whose policy has drifted from the committed spec would
+ * run with gating this repository no longer describes, and nothing on screen
+ * would say so. That is the silent-bypass failure mode in a different costume,
+ * which makes it worth a check rather than an assumption.
+ *
+ * Absence is a warning rather than a failure: the scripts drive the harness with
+ * an inline spec and do not need a saved agent at all. It is the harness UI that
+ * does, so this blocks a demo, not a conformance run.
+ */
+async function checkAgent(client) {
+  try {
+    const { data } = await client.agents.list();
+    const list = Array.isArray(data) ? data : (data?.data ?? []);
+    const agent = list.find((a) => (a.name ?? a.manifest?.name) === EXPECTED_AGENT);
+
+    if (!agent) {
+      const names = list.map((a) => a.name ?? a.manifest?.name).filter(Boolean);
+      record(
+        'warn',
+        `agent '${EXPECTED_AGENT}'`,
+        names.length ? `not found. Registered: ${names.join(', ')}` : 'no agents registered',
+        'npm run provision registers it. Only needed to drive the agent from the harness UI — prove:gate and bench use an inline spec.',
+      );
+      return;
+    }
+
+    // Both casings are accepted because the SDK is not symmetric: it serialises
+    // the manifest to snake_case on the wire, exactly as the committed spec is
+    // written, but deserialises the response back into camelCase. Reading only
+    // `mcp_servers` here found nothing on a perfectly healthy agent and reported
+    // that it gated nothing — a false alarm about the approval policy, which is
+    // the one thing this check exists to be trusted about.
+    const servers = agent.manifest?.mcp_servers ?? agent.manifest?.mcpServers ?? [];
+    const ops = servers.find((m) => m.name === EXPECTED_CONNECTOR);
+    const policy = ops?.require_approval_for_tools ?? ops?.requireApprovalForTools;
+
+    if (!Array.isArray(policy) || policy.length === 0) {
+      record(
+        'fail',
+        `agent '${EXPECTED_AGENT}'`,
+        'registered, but its saved manifest gates nothing — every destructive tool would run unprompted',
+        'npm run provision updates it in place from agent/sentinel-agent.agent.json.',
+      );
+      return;
+    }
+
+    // Compared against the committed spec rather than a list of tool names kept
+    // here. A second copy of "which tools are dangerous" is a second thing to
+    // forget to update, and the committed spec is already the source of truth
+    // that `registry.test.ts` asserts against.
+    const expected = committedApprovalPolicy();
+    const missing = expected.filter((selector) => !policy.includes(selector));
+    if (missing.length > 0) {
+      record(
+        'fail',
+        `agent '${EXPECTED_AGENT}'`,
+        `registered, but its policy is missing ${missing.join(', ')} — the saved manifest has drifted from the committed spec`,
+        'npm run provision updates it in place from agent/sentinel-agent.agent.json.',
+      );
+      return;
+    }
+
+    record('ok', `agent '${EXPECTED_AGENT}'`, `registered, ${policy.length} approval selectors`);
+  } catch (error) {
+    record(
+      'warn',
+      `agent '${EXPECTED_AGENT}'`,
       `could not list (${error instanceof Error ? error.message : error})`,
     );
   }

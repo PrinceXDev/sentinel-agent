@@ -40,7 +40,7 @@ export const DOCS_NAV: DocSection[] = [
       {
         href: '/docs/tools',
         label: 'MCP tool surface',
-        blurb: 'Ten tools, each with a risk class that decides whether it can run unattended.',
+        blurb: 'Thirteen tools, each with a risk class that decides whether it can run unattended.',
       },
       {
         href: '/docs/gate-prover',

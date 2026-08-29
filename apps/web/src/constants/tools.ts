@@ -1,6 +1,6 @@
 export type ToolRisk = 'read' | 'write' | 'destructive';
 
-/** The ten MCP tools sentinel-ops publishes, and their risk class. */
+/** The MCP tools sentinel-ops publishes, and their risk class. */
 export const MCP_TOOLS: { name: string; risk: ToolRisk; does: string }[] = [
   { name: 'get_incident', risk: 'read', does: 'The incident record, its severity and its notes.' },
   { name: 'list_incidents', risk: 'read', does: 'Everything currently open on the estate.' },
@@ -26,9 +26,24 @@ export const MCP_TOOLS: { name: string; risk: ToolRisk; does: string }[] = [
     does: 'Raw golden-signal samples. Deliberately no analysis.',
   },
   {
+    name: 'preview_remediation',
+    risk: 'read',
+    does: 'What a destructive call would change, computed without doing it. Free to call.',
+  },
+  {
     name: 'post_incident_note',
     risk: 'write',
     does: 'Append a finding to the incident. Mutates shared state, so it asks.',
+  },
+  {
+    name: 'record_finding',
+    risk: 'write',
+    does: 'The conclusion as structure: claims paired with sources, confidence, what was ruled out.',
+  },
+  {
+    name: 'audit_finding',
+    risk: 'write',
+    does: 'A second reviewer scores the evidence, not the conclusion. Identity is self-declared.',
   },
   {
     name: 'rollback_deployment',

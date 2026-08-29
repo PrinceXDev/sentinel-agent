@@ -19,7 +19,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import express, { type Request, type Response } from 'express';
-import { SERVICE } from './domain/fixtures.js';
+import { SCENARIOS } from './domain/scenarios.js';
 import { estate } from './domain/store.js';
 import { checkLabAuth, checkMcpAuth, isLabTokenConfigured, reportPosture } from './lib/auth.js';
 import { logger } from './lib/logger.js';
@@ -220,6 +220,52 @@ if (LAB_MODE) {
     logger.info('estate.reset', { via: 'lab-mode' });
     res.json({ ok: true, reset_at: new Date().toISOString() });
   });
+
+  /**
+   * Swap the loaded scenario. Lab mode only.
+   *
+   * `npm run bench` walks all four cases through the same agent, and each one has
+   * to start from its own clean fixture. Gated behind the same flag and token as
+   * the twin rather than exposed generally: switching the estate mid-run would
+   * make the audit log — which `prove:gate` uses as an independent oracle —
+   * describe two different estates in one sequence.
+   */
+  app.post('/estate/scenario', (req, res) => {
+    const rejection = checkLabAuth(req.headers.authorization);
+    if (rejection) {
+      logger.warn('estate.scenario_unauthorized', { reason: rejection, ip: req.ip });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const requested = (req.body as { scenario_id?: unknown } | undefined)?.scenario_id;
+    if (typeof requested !== 'string' || !requested) {
+      res.status(400).json({
+        error: 'scenario_id is required',
+        available: SCENARIOS.map((s) => s.id),
+      });
+      return;
+    }
+
+    try {
+      const scenario = estate.load(requested);
+      logger.info('estate.scenario_loaded', { scenario: scenario.id, service: scenario.service });
+      res.json({
+        ok: true,
+        scenario: {
+          id: scenario.id,
+          title: scenario.title,
+          service: scenario.service,
+          kind: scenario.kind,
+        },
+      });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : String(error),
+        available: SCENARIOS.map((s) => s.id),
+      });
+    }
+  });
 }
 
 app.get('/healthz', (_req, res) => {
@@ -244,12 +290,44 @@ app.get('/estate/audit', (_req, res) => {
 });
 
 app.get('/estate/state', (_req, res) => {
+  const service = estate.service;
+  const { id, title, kind, synopsis } = estate.scenario;
   res.json({
-    service: SERVICE,
+    service,
+    // Which case the estate is currently loaded with. The UI shows this so an
+    // operator looking at `payments-api` telemetry is never left wondering why
+    // the checkout incident they expected is not there.
+    scenario: { id, title, kind, synopsis },
     incidents: estate.listIncidents(),
-    live_deployment: estate.liveDeployment(SERVICE) ?? null,
-    health: estate.getHealth(SERVICE) ?? null,
-    deployments: estate.listDeployments(SERVICE, 10),
+    live_deployment: estate.liveDeployment(service) ?? null,
+    health: estate.getHealth(service) ?? null,
+    deployments: estate.listDeployments(service, 10),
+    remediated_at: estate.remediatedAt(),
+  });
+});
+
+/**
+ * The agent's structured conclusions, and any independent audit of them.
+ *
+ * Separate from `/estate/state` because it answers a different question: state
+ * is what the estate *is*, findings are what the agent *concluded about it*. The
+ * UI renders them side by side precisely so the two can disagree visibly.
+ */
+app.get('/estate/findings', (_req, res) => {
+  res.json({ findings: estate.listFindings(), latest: estate.latestFinding() });
+});
+
+/** Every scenario the bench can load, without the ground truth. */
+app.get('/estate/scenarios', (_req, res) => {
+  res.json({
+    current: estate.scenario.id,
+    scenarios: SCENARIOS.map((s) => ({
+      id: s.id,
+      title: s.title,
+      service: s.service,
+      kind: s.kind,
+      synopsis: s.synopsis,
+    })),
   });
 });
 

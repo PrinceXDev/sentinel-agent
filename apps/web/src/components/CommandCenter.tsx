@@ -15,7 +15,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { ApprovalGate } from '@/components/ApprovalGate';
 import { ControlPanel } from '@/components/ControlPanel';
 import { IncidentBrief } from '@/components/IncidentBrief';
+import { InjectionAlert } from '@/components/InjectionAlert';
 import { OperatorTokenPrompt } from '@/components/OperatorTokenPrompt';
+import { RootCause } from '@/components/RootCause';
 import { Timeline } from '@/components/Timeline';
 import { TopBar } from '@/components/TopBar';
 import { useAgentRun } from '@/hooks/useAgentRun';
@@ -44,12 +46,19 @@ export const CommandCenter = () => {
   // audit panels reflect the outcome rather than the state at page load. Keyed on
   // status transitions rather than on every event — the estate does not change
   // between tool calls, and polling it during a run would be noise.
+  // Also keyed on the number of completed tool calls: `record_finding` and
+  // `audit_finding` are themselves gated writes, so the case the approver needs
+  // lands mid-run rather than at a terminal status. Keying on status alone left
+  // the rollback card showing "unaudited" for a finding that had just been
+  // audited two calls earlier.
   const { status } = state;
+  const completedCalls = state.toolCalls.size;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: completedCalls is an intentional refetch trigger, not a value read inside the effect
   useEffect(() => {
     if (status === 'done' || status === 'awaiting_approval' || status === 'error') {
       setEstateRefreshKey((k) => k + 1);
     }
-  }, [status]);
+  }, [status, completedCalls]);
 
   const estate = useEstate(estateRefreshKey);
   const canStart = status !== 'running' && status !== 'awaiting_approval' && !busy;
@@ -143,12 +152,23 @@ export const CommandCenter = () => {
             />
           )}
 
+          {/*
+            Order matters. An injection attempt is context for reading everything
+            below it, the gate is the decision, and the root cause is the case
+            behind that decision — so the gate sits between them rather than
+            after, keeping the button within reach of the evidence.
+          */}
+          <InjectionAlert finding={estate.finding} />
+
           <ApprovalGate
             approvals={approvals}
             busy={busy}
+            finding={estate.finding}
             onApprove={(id) => void run.approve(id)}
             onDeny={(id, reason) => void run.deny(id, reason)}
           />
+
+          <RootCause finding={estate.finding} history={estate.findings ?? []} />
 
           {/* `lg:overflow-y-auto` — the timeline scrolls on its own only once the
               two-pane desktop layout is active. Below `lg` it just flows in the

@@ -46,12 +46,81 @@ export interface EstateHealth {
   checks: { name: string; ok: boolean; detail: string }[];
 }
 
+export interface EstateScenario {
+  id: string;
+  title: string;
+  kind: string;
+  synopsis: string;
+}
+
 export interface EstateState {
   service: string;
+  /**
+   * Which case the estate is loaded with. Optional because a server predating
+   * the scenario bench does not send it, and a missing field should degrade the
+   * header rather than fail the whole guard.
+   */
+  scenario?: EstateScenario;
   incidents: EstateIncident[];
   live_deployment: EstateDeployment | null;
   health: EstateHealth | null;
   deployments: EstateDeployment[];
+  remediated_at?: string | null;
+}
+
+// ── Findings ───────────────────────────────────────────────────────────────
+
+export const RECOMMENDED_ACTIONS = ['rollback', 'restart', 'no_action', 'escalate'] as const;
+
+export type RecommendedAction = (typeof RECOMMENDED_ACTIONS)[number];
+
+export interface EvidenceLink {
+  claim: string;
+  source: string;
+  detail: string;
+}
+
+export interface RuledOut {
+  candidate: string;
+  reason: string;
+}
+
+export interface InjectionReport {
+  location: string;
+  quote: string;
+  demanded: string;
+}
+
+export interface FindingAudit {
+  at: string;
+  /** Self-declared. See `identity_verified`. */
+  auditor: string;
+  /**
+   * Always false. MCP calls carry no caller identity, so the ops server cannot
+   * confirm the reviewer is a different agent from the investigator. The panel
+   * reads this to label the second opinion honestly rather than as proof.
+   */
+  identity_verified: boolean;
+  confidence: number;
+  verdict: 'supported' | 'partially_supported' | 'unsupported';
+  unsupported_claims: string[];
+  gaps: string[];
+  rationale: string;
+}
+
+export interface Finding {
+  at: string;
+  incident_id: string;
+  root_cause: string;
+  culprit_deployment_id: string | null;
+  recommended_action: RecommendedAction;
+  confidence: number;
+  confidence_rationale: string;
+  evidence: EvidenceLink[];
+  ruled_out: RuledOut[];
+  verification_plan: string;
+  injections_detected: InjectionReport[];
+  audit: FindingAudit | null;
 }
 
 export interface AuditEntry {
@@ -213,6 +282,67 @@ export const isEstateState = (value: unknown): value is EstateState => {
 const isAuditPayload = (value: unknown): value is { entries: AuditEntry[] } =>
   isRecord(value) && Array.isArray(value.entries);
 
+/**
+ * Narrow to the closed action union, not merely to `string`.
+ *
+ * `isStr` here was a real hole: it widened any string into `RecommendedAction`,
+ * so a malformed or forward-versioned payload passed validation, reached
+ * `RootCause`, and crashed the panel when the four-entry presentation map
+ * returned `undefined` and its `.background` was dereferenced. The guard is the
+ * only thing standing between a drifted server and the render — see the module
+ * header — so it has to reject a value the renderer cannot draw.
+ */
+const isRecommendedAction = (v: unknown): v is RecommendedAction =>
+  typeof v === 'string' && (RECOMMENDED_ACTIONS as readonly string[]).includes(v);
+
+const isEvidence = (v: unknown): v is EvidenceLink =>
+  isRecord(v) && isStr(v.claim) && isStr(v.source) && isStr(v.detail);
+
+const isRuledOut = (v: unknown): v is RuledOut =>
+  isRecord(v) && isStr(v.candidate) && isStr(v.reason);
+
+const isInjection = (v: unknown): v is InjectionReport =>
+  isRecord(v) && isStr(v.location) && isStr(v.quote) && isStr(v.demanded);
+
+const isFindingAudit = (v: unknown): v is FindingAudit =>
+  isRecord(v) &&
+  isStr(v.at) &&
+  isStr(v.auditor) &&
+  typeof v.identity_verified === 'boolean' &&
+  isNum(v.confidence) &&
+  isStr(v.verdict) &&
+  isArrayOf(v.unsupported_claims, isStr) &&
+  isArrayOf(v.gaps, isStr) &&
+  isStr(v.rationale);
+
+/**
+ * Validated to the leaf, for the same reason `isEstateState` is: this payload
+ * drives the confidence dial and the evidence graph, and a malformed `evidence`
+ * array would render a claim with no source as though it had one — which is
+ * precisely the failure the structured finding exists to make visible.
+ */
+const isFinding = (v: unknown): v is Finding =>
+  isRecord(v) &&
+  isStr(v.at) &&
+  isStr(v.incident_id) &&
+  isStr(v.root_cause) &&
+  (v.culprit_deployment_id === null || isStr(v.culprit_deployment_id)) &&
+  isRecommendedAction(v.recommended_action) &&
+  isNum(v.confidence) &&
+  isStr(v.confidence_rationale) &&
+  isArrayOf(v.evidence, isEvidence) &&
+  isArrayOf(v.ruled_out, isRuledOut) &&
+  isStr(v.verification_plan) &&
+  isArrayOf(v.injections_detected, isInjection) &&
+  (v.audit === null || isFindingAudit(v.audit));
+
+export const isFindingsPayload = (
+  value: unknown,
+): value is { findings: Finding[]; latest: Finding | null } =>
+  isRecord(value) &&
+  isArrayOf(value.findings, isFinding) &&
+  (value.latest === null || isFinding(value.latest));
+
 const isToolsPayload = (value: unknown): value is { tools: EstateToolInfo[] } =>
   isRecord(value) && Array.isArray(value.tools);
 
@@ -220,6 +350,7 @@ export const estate = {
   state: () => get('state', isEstateState),
   audit: () => get('audit', isAuditPayload),
   tools: () => get('tools', isToolsPayload),
+  findings: () => get('findings', isFindingsPayload),
 };
 
 /**

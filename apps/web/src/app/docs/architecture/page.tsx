@@ -71,7 +71,7 @@ const ArchitecturePage = () => {
               <strong className="text-ink">sentinel-ops MCP server</strong>
             </span>,
             <C key="d2">127.0.0.1:8940</C>,
-            'Ten tools and a simulated estate. No credentials. Optional bearer token for its own protection, not for anyone else’s.',
+            'Thirteen tools and a simulated estate. No credentials. Optional bearer token for its own protection, not for anyone else’s.',
           ],
         ]}
       />

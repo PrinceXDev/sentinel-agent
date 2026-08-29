@@ -43,7 +43,7 @@ export const MCP_TOOLS: { name: string; risk: ToolRisk; does: string }[] = [
   {
     name: 'audit_finding',
     risk: 'write',
-    does: 'An independent reviewer scores the evidence, not the conclusion.',
+    does: 'A second reviewer scores the evidence, not the conclusion. Identity is self-declared.',
   },
   {
     name: 'rollback_deployment',

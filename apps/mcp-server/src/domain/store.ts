@@ -60,6 +60,16 @@ export interface RemediationPreview {
   readonly blast_radius: string;
 }
 
+/**
+ * The actor a finding is recorded under.
+ *
+ * The investigating agent. An audit claiming this name is a self-audit wearing a
+ * reviewer's label, and is refused — the weakest of checks, but the only one
+ * available: MCP calls carry no caller identity, so the server cannot otherwise
+ * tell the investigator from the reviewer.
+ */
+export const INVESTIGATOR_ACTOR = 'sentinel-agent';
+
 export class EstateStore {
   #scenario: Scenario;
   #incident: Incident;
@@ -435,7 +445,7 @@ export class EstateStore {
 
     this.#record(
       'record_finding',
-      'sentinel-agent',
+      INVESTIGATOR_ACTOR,
       `Finding recorded for ${finding.incident_id}`,
       {
         incident_id: finding.incident_id,
@@ -450,12 +460,35 @@ export class EstateStore {
     return recorded;
   }
 
-  /** Attach an independent critique to the most recent finding. */
-  auditFinding(incidentId: string, audit: Omit<FindingAudit, 'at'>): Finding | undefined {
+  /**
+   * Attach a second-opinion critique to the most recent finding.
+   *
+   * The reviewer's identity is **self-declared and unverified**, and is recorded
+   * as such. MCP tool calls carry no caller identity — root agent and subagents
+   * reach this server over the same stateless connector with the same token — so
+   * "a different agent wrote this" is a convention the agent instructions ask for
+   * and nothing here can confirm.
+   *
+   * The one check that is available is applied: an audit claiming to be the
+   * investigating actor is refused outright. That catches the naive self-audit
+   * and nothing more, which is why `identity_verified` is stored as `false` and
+   * the console says so rather than presenting the second number as independent.
+   */
+  auditFinding(
+    incidentId: string,
+    audit: Omit<FindingAudit, 'at' | 'identity_verified'>,
+  ): Finding | undefined {
     const target = [...this.#findings].reverse().find((f) => f.incident_id === incidentId);
     if (!target) return undefined;
 
-    target.audit = { ...audit, at: new Date().toISOString() };
+    if (audit.auditor.trim().toLowerCase() === INVESTIGATOR_ACTOR.toLowerCase()) {
+      throw new EstateError(
+        `An audit cannot be attributed to ${INVESTIGATOR_ACTOR}, which is the actor that recorded ` +
+          'the finding. Dispatch a separate reviewer and give it its own name.',
+      );
+    }
+
+    target.audit = { ...audit, at: new Date().toISOString(), identity_verified: false };
 
     this.#record('audit_finding', audit.auditor, `Finding audited for ${incidentId}`, {
       incident_id: incidentId,

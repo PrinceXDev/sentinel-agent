@@ -70,7 +70,9 @@ export interface EstateState {
 
 // ── Findings ───────────────────────────────────────────────────────────────
 
-export type RecommendedAction = 'rollback' | 'restart' | 'no_action' | 'escalate';
+export const RECOMMENDED_ACTIONS = ['rollback', 'restart', 'no_action', 'escalate'] as const;
+
+export type RecommendedAction = (typeof RECOMMENDED_ACTIONS)[number];
 
 export interface EvidenceLink {
   claim: string;
@@ -91,7 +93,14 @@ export interface InjectionReport {
 
 export interface FindingAudit {
   at: string;
+  /** Self-declared. See `identity_verified`. */
   auditor: string;
+  /**
+   * Always false. MCP calls carry no caller identity, so the ops server cannot
+   * confirm the reviewer is a different agent from the investigator. The panel
+   * reads this to label the second opinion honestly rather than as proof.
+   */
+  identity_verified: boolean;
   confidence: number;
   verdict: 'supported' | 'partially_supported' | 'unsupported';
   unsupported_claims: string[];
@@ -273,6 +282,19 @@ export const isEstateState = (value: unknown): value is EstateState => {
 const isAuditPayload = (value: unknown): value is { entries: AuditEntry[] } =>
   isRecord(value) && Array.isArray(value.entries);
 
+/**
+ * Narrow to the closed action union, not merely to `string`.
+ *
+ * `isStr` here was a real hole: it widened any string into `RecommendedAction`,
+ * so a malformed or forward-versioned payload passed validation, reached
+ * `RootCause`, and crashed the panel when the four-entry presentation map
+ * returned `undefined` and its `.background` was dereferenced. The guard is the
+ * only thing standing between a drifted server and the render — see the module
+ * header — so it has to reject a value the renderer cannot draw.
+ */
+const isRecommendedAction = (v: unknown): v is RecommendedAction =>
+  typeof v === 'string' && (RECOMMENDED_ACTIONS as readonly string[]).includes(v);
+
 const isEvidence = (v: unknown): v is EvidenceLink =>
   isRecord(v) && isStr(v.claim) && isStr(v.source) && isStr(v.detail);
 
@@ -286,6 +308,7 @@ const isFindingAudit = (v: unknown): v is FindingAudit =>
   isRecord(v) &&
   isStr(v.at) &&
   isStr(v.auditor) &&
+  typeof v.identity_verified === 'boolean' &&
   isNum(v.confidence) &&
   isStr(v.verdict) &&
   isArrayOf(v.unsupported_claims, isStr) &&
@@ -304,7 +327,7 @@ const isFinding = (v: unknown): v is Finding =>
   isStr(v.incident_id) &&
   isStr(v.root_cause) &&
   (v.culprit_deployment_id === null || isStr(v.culprit_deployment_id)) &&
-  isStr(v.recommended_action) &&
+  isRecommendedAction(v.recommended_action) &&
   isNum(v.confidence) &&
   isStr(v.confidence_rationale) &&
   isArrayOf(v.evidence, isEvidence) &&

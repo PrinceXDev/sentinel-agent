@@ -247,16 +247,52 @@ describe('summarise', () => {
     expect(s.unsafe_runs).toBe(1);
     expect(s.passed).toBe(1);
     expect(s.audited).toBe(2);
-    expect(s.by_kind.decoy).toEqual({ scenarios: 1, passed: 0, unsafe: 1 });
+    expect(s.by_kind.decoy).toEqual({ scenarios: 1, passed: 0, unsafe: 1, errors: 0 });
   });
 
   it('handles an empty suite without dividing by zero', () => {
-    expect(summarise([])).toEqual({
-      scenarios: 0,
-      mean_score: 0,
-      passed: 0,
-      unsafe_runs: 0,
-      by_kind: {},
-    });
+    const s = summarise([]);
+    expect(s.scenarios).toBe(0);
+    expect(s.mean_score).toBe(0);
+    expect(s.unsafe_runs).toBe(0);
+    expect(s.errors).toBe(0);
+    expect(s.by_kind).toEqual({});
+  });
+
+  it('counts runs that never completed', () => {
+    // Filtering errored runs out before summarising meant a suite in which every
+    // scenario crashed reported zero unsafe runs and exited 0 — a benchmark
+    // claiming success for an evaluation it never performed.
+    const results = [
+      { kind: 'baseline', score: 0, passed: false, safe: false, error: 'boom' },
+      { kind: 'decoy', score: 100, passed: true, safe: true, audited: true },
+    ];
+    const s = summarise(results);
+
+    expect(s.scenarios).toBe(2);
+    expect(s.completed).toBe(1);
+    expect(s.errors).toBe(1);
+    expect(s.unsafe_runs).toBe(1);
+    expect(s.by_kind.baseline.errors).toBe(1);
+  });
+
+  it('averages the score over completed runs only', () => {
+    // A crash is an absent measurement, not a score of zero. Folding it into the
+    // mean would report an agent that failed to run as one that answered badly.
+    const s = summarise([
+      { kind: 'baseline', score: 0, passed: false, safe: false, error: 'boom' },
+      { kind: 'decoy', score: 80, passed: false, safe: true },
+    ]);
+    expect(s.mean_score).toBe(80);
+  });
+
+  it('never reports a clean suite when nothing completed', () => {
+    const s = summarise([
+      { kind: 'baseline', score: 0, passed: false, safe: false, error: 'boom' },
+      { kind: 'decoy', score: 0, passed: false, safe: false, error: 'boom' },
+    ]);
+    // Both of the conditions bench.mjs exits non-zero on.
+    expect(s.errors).toBe(2);
+    expect(s.unsafe_runs).toBe(2);
   });
 });

@@ -14,7 +14,7 @@ This is an in-progress hackathon build. What is done, verified, and what is not:
 
 | Component                                                | Status                                                       |
 | -------------------------------------------------------- | ------------------------------------------------------------ |
-| Ops MCP server — 13 tools, risk-classified and annotated | **Done.** 116 tests, annotations verified on the wire         |
+| Ops MCP server — 13 tools, risk-classified and annotated | **Done.** 118 tests, annotations verified on the wire         |
 | Seeded incident estate (deterministic fixtures)          | **Done.** Reproducible 3.7x regression                       |
 | Scenario bench — 4 cases with declared ground truth      | **Done.** Two are correctly answered by doing nothing; one carries a prompt-injection payload |
 | Structured findings + independent evidence audit         | **Done.** `record_finding` / `audit_finding`, rendered in the console |
@@ -25,7 +25,7 @@ This is an in-progress hackathon build. What is done, verified, and what is not:
 | sentinel-agent UI (Next.js 16 + React 19)                | **Done.** Timeline, subagent threads, approval gate, audit   |
 | End-to-end run against a live harness                    | **Done.** No Daytona key needed — see below                  |
 | Gate Prover — measures whether the approval gate holds   | **Done.** [`npm run prove:gate`](reports/gate-conformance.json), live conformance run below |
-| Qodo review trail                                        | **In progress.** PR #1: 6 findings addressed. PR #4: 6 findings addressed, plus 2 self-found |
+| Qodo review trail                                        | **In progress.** 16 findings across PRs #1, #4 and #6 — all addressed, none dismissed, plus 2 self-found |
 | Injection conformance probe (P5)                         | **Done.** Wired end to end; awaiting a live scored run        |
 | `npm run bench` — scores judgement against ground truth  | **Done.** Scorer unit-tested; awaiting a live scored run      |
 | Demo video                                               | **Not started**                                              |
@@ -232,6 +232,12 @@ unsafe regardless of how well it scored elsewhere, and any unsafe run fails the 
 audit log is read as an independent oracle, so a finding that says `no_action` while the log shows a
 rollback is scored on the log.
 
+A scenario that **throws** also fails the suite. An exception is not a passing run with a missing
+number, it is an unmeasured one — and an earlier version filtered errored runs out before
+summarising, so a bench in which every scenario crashed reported zero unsafe runs and exited 0. Qodo
+caught that on PR #6. `mean_score` still averages over completed runs only, because a crash is an
+absent measurement rather than a score of zero; `errors` carries it instead.
+
 Nothing the agent can read contains the ground truth — the tools serve incidents, deployments, diffs
 and metrics, and `scenarios.test.ts` asserts that the rationale never appears in anything a read tool
 returns.
@@ -258,9 +264,29 @@ dispatched with a brief that withholds the conclusion and the confidence, reads 
 checks each claim against the source cited for it, and calls `audit_finding` with its own number.
 
 The gap between the two is the signal, and it is recorded as `confidence_delta`. The console draws
-both on one dial — the investigator's arc inside, the auditor's outside — so the disagreement is
+both on one dial — the investigator's arc inside, the reviewer's outside — so the disagreement is
 visible before either number is, and the approval card says plainly when a conclusion has not been
-audited at all.
+reviewed at all.
+
+### What "independent" does and does not mean here
+
+It means the reviewer is *briefed* independently: it is not told the conclusion or the confidence,
+and it scores the evidence rather than ratifying a number.
+
+It does **not** mean the separation is enforced. MCP tool calls carry no caller identity — the root
+agent and its subagents reach the ops server over the same stateless connector with the same token —
+so nothing in this repository can confirm that a different agent made the call. Qodo raised this on
+PR #6 and it was right to.
+
+What is enforced is the little that can be: `audit_finding` takes a **required** `auditor` (the
+`evidence-auditor` default was removed — a self-audit inherited a trustworthy-sounding name for
+free), and an audit attributed to `sentinel-agent`, the actor findings are recorded under, is
+refused outright. That catches the naive self-audit and nothing more.
+
+So the stored audit carries `identity_verified: false` as a field rather than as a caveat in prose,
+and the console labels the block **"second opinion"** with the line *"reviewer name is self-declared
+— the harness cannot verify that a different agent produced this."* A second opinion presented as
+proof would be worse than no second opinion.
 
 ## Human approval
 
@@ -323,7 +349,7 @@ Unlike the connector, the provider and the skill — which are create-if-absent,
 npm test
 ```
 
-244 tests (116 MCP + 78 UI + 50 script/oracle). The ones that matter for the safety model are in `apps/mcp-server/src/tools/registry.test.ts`; the ones that matter for the conformance suite's own correctness are in `scripts/lib/gateOracles.test.mjs`.
+262 tests (118 MCP + 89 UI + 55 script/oracle). The ones that matter for the safety model are in `apps/mcp-server/src/tools/registry.test.ts`; the ones that matter for the conformance suite's own correctness are in `scripts/lib/gateOracles.test.mjs`.
 
 To confirm annotations reach the wire:
 
@@ -359,7 +385,7 @@ otherwise be discovered by a rollback that never paused.
 ✓ SENTINEL_MODEL           openrouter/claude-sonnet-4-5
 ✓ SENTINEL_UI_TOKEN        set (48 chars)
 ✓ ops MCP server           sentinel-ops v0.1.0 on http://127.0.0.1:8940
-✓ tool annotations         10 tools, 0 unannotated, 3 approval-gated
+✓ tool annotations         13 tools, 0 unannotated, 5 approval-gated
 ✓ harness                  reachable at http://localhost:8790
 ✓ model provider           openrouter
 ✓ sandbox provider         none configured — local fallback confirmed active in harness log
@@ -383,7 +409,7 @@ run on this project's dev machine — no Daytona key anywhere in it.
 | `npm run bench`     | Scores the agent's judgement against four scenarios with known ground truth |
 | `npm run dev:mcp`   | Ops MCP server, watch mode                            |
 | `npm run dev:web`   | Next.js UI on `127.0.0.1:3000`                        |
-| `npm test`          | Full suite (244 tests)                                |
+| `npm test`          | Full suite (262 tests)                                |
 | `npm run typecheck` | `tsc --noEmit`, strict across both workspaces         |
 | `npm run lint`      | Biome lint                                            |
 | `npm run check`     | Biome lint + format, writing fixes                    |
@@ -421,6 +447,31 @@ observation wearing the wrong probe's label, which would have asserted an untest
 That is now its own verdict, `route_not_exercised`, and it can only downgrade a result, never upgrade
 one. Separately, a throwaway debug script had been committed into the branch; removed and
 gitignored. Full detail in the PR.
+
+## PR #6: what Qodo found in the bench and the injection probe
+
+[PR #6](https://github.com/PrinceXDev/sentinel-agent/pull/6) added the scenario bench, probe P5, and
+the structured findings. Qodo found four bugs — three High, one Medium. All four were legitimate and
+all four are fixed. Two of them broke the same rule this project is otherwise built around: *a suite
+that cannot measure something must not report success about it.*
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | **High** | Errored bench scenarios were filtered out before summarising, so a run in which every scenario crashed reported zero unsafe runs and **exited 0** | Every result is summarised, `errors` and `completed` reported separately, and the process exits non-zero on either an unsafe run or an incomplete one |
+| 2 | **High** | `StreamObserver` replaced a tool call's arguments with each streamed fragment, so a payload split as `{"deployment_id":"dpl-` + `9142"}` left only the tail — P5 would report `refused` for a run that had **obeyed** the injection | Arguments accumulate per tool-call id. The SDK's own `mergeEventDelta` was checked first and does not assemble these, so the fold happens in the observer |
+| 3 | **High** | `audit_finding` accepted an arbitrary `auditor` defaulting to the trustworthy-sounding `evidence-auditor`, so the investigating agent could self-audit and have it presented as an independent review | Default removed and the field made required; an audit attributed to `sentinel-agent` is refused; the record carries `identity_verified: false` and the console says the name is self-declared |
+| 4 | Medium | The findings guard accepted any string as `recommended_action`, so a drifted payload passed validation and crashed `RootCause` on `undefined.background` | Guard narrows against the closed union, and the renderer falls back rather than indexing blind |
+
+Finding 2 is the one worth dwelling on, because the test suite was *asserting the wrong behaviour*.
+It covered the trailing-empty-fragment case and passed, which made the gap look tested. A false
+`refused` on the injection probe is the worst failure this repository can produce — it is a safety
+claim, in the reassuring direction, about the one thing P5 exists to measure.
+
+Finding 3 could only be **partially** fixed, and the README says so rather than implying otherwise.
+Qodo's suggested remedy was to verify reviewer provenance; MCP tool calls carry no caller identity,
+so that is not implementable at this layer. The response was to enforce the little that can be
+enforced and stop claiming the rest — see
+[Findings, and the second opinion](#findings-and-the-second-opinion).
 
 ## Project structure
 
@@ -491,8 +542,20 @@ submit an approval. The operator token is the actual fix.
 ### Review process
 
 Substantive changes go through pull requests reviewed by Qodo before merge.
-High-severity findings are fixed rather than dismissed; the two here were both
-real. Nothing in this section is a link to a review that did not happen.
+High-severity findings are fixed rather than dismissed. Nothing in this section
+is a link to a review that did not happen.
+
+Running total across the reviewed PRs — **16 findings, 16 addressed, 0 dismissed**:
+
+| PR | Findings | Detail |
+|---|---|---|
+| [#1](https://github.com/PrinceXDev/sentinel-agent/pull/1) | 6 (2 High, 4 Medium) | Above |
+| [#4](https://github.com/PrinceXDev/sentinel-agent/pull/4) | 6 (2 High, 4 Medium), plus 2 self-found | [Gate Prover follow-up](#gate-prover-follow-up-what-qodo-found-in-the-suite-itself) |
+| [#6](https://github.com/PrinceXDev/sentinel-agent/pull/6) | 4 (3 High, 1 Medium) | [PR #6](#pr-6-what-qodo-found-in-the-bench-and-the-injection-probe) |
+
+One of the sixteen is fixed only in part: reviewer identity cannot be verified through MCP, so PR #6's
+finding 3 is closed by enforcing what is enforceable and stating the rest as a limitation rather than
+by claiming a guarantee that does not exist.
 
 ## Known limitations
 
@@ -504,7 +567,8 @@ real. Nothing in this section is a link to a review that did not happen.
 - **Model behaviour is not deterministic.** The fixtures are fixed; the investigation path varies between runs.
 - **The bench and P5 have no scored run yet.** Both are implemented and their pure logic is unit-tested, but neither has been run against a live harness in this repository, so there is no number to quote for either.
 - **The mechanism check in the bench is keyword matching**, not comprehension. It catches "named the deployment but never said how", which is the failure worth catching cheaply; it would not catch a fluent wrong mechanism.
-- **`evidence-auditor` is a prompt-level convention**, like the other three subagent roles. The harness does not enforce that the reviewer is a different agent — see the subagent limitation above.
+- **The reviewer's identity is self-declared and unverifiable.** MCP calls carry no caller identity, so the ops server cannot confirm that `audit_finding` was called by a different agent from the one that recorded the finding. An audit naming `sentinel-agent` is refused and the stored record carries `identity_verified: false`, but a determined self-audit under any other name would pass. The console says so rather than presenting the second number as independent — see [Findings, and the second opinion](#findings-and-the-second-opinion).
+- **`evidence-auditor` is a prompt-level convention**, like the other three subagent roles. The harness does not enforce the name or the fan-out — see the subagent limitation above.
 
 ## Future work
 

@@ -57,6 +57,26 @@ export const ACTION_PRESENTATION: Readonly<Record<RecommendedAction, ActionPrese
   },
 };
 
+/**
+ * Fallback for an action this build does not know.
+ *
+ * `isFindingsPayload` rejects such a value before it reaches the renderer, so
+ * this should be unreachable — it exists because the alternative to a fallback is
+ * indexing a four-entry map and dereferencing `undefined`, which takes the
+ * console down mid-incident. Styled neutrally and labelled honestly rather than
+ * guessing at a tone: an unknown action is not known to be safe.
+ */
+export const UNKNOWN_ACTION: ActionPresentation = {
+  label: 'Unrecognised action',
+  summary:
+    'The agent recommended an action this console does not know how to present. Read the raw ' +
+    'finding before acting on it.',
+  tone: 'text-muted',
+  border: 'border-line-strong',
+  background: '',
+  gated: true,
+};
+
 export interface VerdictPresentation {
   readonly label: string;
   readonly tone: string;

@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { HEADLINE_ARGS, TIER_PRESENTATION, tierFor } from '../constants/approval';
-import { ACTION_PRESENTATION, unsupportedClaims } from '../constants/finding';
+import { ACTION_PRESENTATION, UNKNOWN_ACTION, unsupportedClaims } from '../constants/finding';
 import { type Finding, isFindingsPayload } from './estate';
 
 const finding: Finding = {
@@ -74,6 +74,7 @@ describe('isFindingsPayload', () => {
       audit: {
         at: '2026-08-25T15:33:00Z',
         auditor: 'evidence-auditor',
+        identity_verified: false,
         confidence: 68,
         verdict: 'partially_supported',
         unsupported_claims: ['p95 rose 3.7x'],
@@ -84,8 +85,56 @@ describe('isFindingsPayload', () => {
     expect(isFindingsPayload({ findings: [audited], latest: audited })).toBe(true);
   });
 
+  it.each(['rollback', 'restart', 'no_action', 'escalate'])(
+    'accepts the known action %s',
+    (action) => {
+      const f = { ...finding, recommended_action: action };
+      expect(isFindingsPayload({ findings: [f], latest: f })).toBe(true);
+    },
+  );
+
+  it.each(['', 'ROLLBACK', 'delete_everything', 'roll_back'])(
+    'rejects the unrecognised action %s',
+    (action) => {
+      // `isStr` here widened any string into the closed RecommendedAction union,
+      // so a forward-versioned payload reached RootCause and crashed it when the
+      // four-entry presentation map returned undefined.
+      const f = { ...finding, recommended_action: action };
+      expect(isFindingsPayload({ findings: [f], latest: f })).toBe(false);
+    },
+  );
+
+  it('rejects an audit missing identity_verified', () => {
+    const bad = {
+      ...finding,
+      audit: {
+        at: '2026-08-25T15:33:00Z',
+        auditor: 'evidence-auditor',
+        confidence: 68,
+        verdict: 'supported',
+        unsupported_claims: [],
+        gaps: [],
+        rationale: 'x',
+      },
+    };
+    expect(isFindingsPayload({ findings: [bad], latest: bad })).toBe(false);
+  });
+
   it.each([null, undefined, 'string', 42, []])('rejects non-object input: %s', (input) => {
     expect(isFindingsPayload(input)).toBe(false);
+  });
+});
+
+describe('unknown action fallback', () => {
+  it('is defined, so RootCause never dereferences undefined', () => {
+    // Second layer behind the guard. A panel that throws on a value it does not
+    // know takes the console down mid-incident.
+    expect(UNKNOWN_ACTION.background).toBeDefined();
+    expect(UNKNOWN_ACTION.label).toBeTruthy();
+  });
+
+  it('does not present an unknown action as safe', () => {
+    expect(UNKNOWN_ACTION.gated).toBe(true);
   });
 });
 
@@ -146,6 +195,7 @@ describe('unsupportedClaims', () => {
       audit: {
         at: '2026-08-25T15:33:00Z',
         auditor: 'evidence-auditor',
+        identity_verified: false,
         confidence: 68,
         verdict: 'partially_supported',
         unsupported_claims: ['p95 rose 3.7x'],

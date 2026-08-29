@@ -16,7 +16,12 @@
  */
 
 import { ConfidenceMeter } from '@/components/ConfidenceMeter';
-import { ACTION_PRESENTATION, AUDIT_VERDICT, unsupportedClaims } from '@/constants/finding';
+import {
+  ACTION_PRESENTATION,
+  AUDIT_VERDICT,
+  UNKNOWN_ACTION,
+  unsupportedClaims,
+} from '@/constants/finding';
 import type { Finding } from '@/lib/estate';
 import { formatClock } from '@/lib/formatClock';
 
@@ -29,7 +34,11 @@ interface RootCauseProps {
 export const RootCause = ({ finding, history = [] }: RootCauseProps) => {
   if (!finding) return null;
 
-  const action = ACTION_PRESENTATION[finding.recommended_action];
+  // Falls back rather than indexing blind. `isFindingsPayload` already rejects an
+  // unrecognised action, so this is the second layer: a panel that throws on a
+  // value it does not know takes the whole console down mid-incident, which is a
+  // worse outcome than rendering an unfamiliar label.
+  const action = ACTION_PRESENTATION[finding.recommended_action] ?? UNKNOWN_ACTION;
   const rejected = unsupportedClaims(finding);
   const superseded = history.length > 1 ? history.length - 1 : 0;
 
@@ -196,9 +205,21 @@ const AuditPanel = ({ finding }: { finding: Finding }) => {
   return (
     <div className="border-audit/25 border-y bg-audit/[0.04] px-3 py-3 sm:px-5">
       <div className="flex flex-wrap items-baseline gap-2">
-        <span className="eyebrow text-audit">independent audit</span>
+        <span className="eyebrow text-audit">second opinion</span>
         <span className={`font-medium text-xs ${verdict.tone}`}>{verdict.label}</span>
         <span className="tnum ml-auto font-mono text-[0.65rem] text-dim">{audit.auditor}</span>
+        {/*
+          The separation between investigator and reviewer is a convention the
+          agent instructions ask for and the harness cannot enforce: MCP calls
+          carry no caller identity. Saying so here is the difference between a
+          second opinion and a second opinion presented as proof.
+        */}
+        {!audit.identity_verified && (
+          <span className="w-full font-mono text-[0.65rem] text-dim">
+            reviewer name is self-declared — the harness cannot verify that a different agent
+            produced this
+          </span>
+        )}
       </div>
 
       <p className="mt-1.5 max-w-3xl text-muted text-xs leading-relaxed">{audit.rationale}</p>

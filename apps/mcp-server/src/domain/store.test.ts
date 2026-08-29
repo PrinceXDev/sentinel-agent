@@ -292,6 +292,39 @@ describe('findings', () => {
     expect(estate.listAudit().at(-1)?.details.confidence_delta).toBe(-24);
   });
 
+  it('refuses an audit attributed to the investigating actor', () => {
+    estate.recordFinding(sampleFinding);
+    // The only separation check available: MCP calls carry no caller identity, so
+    // the server cannot otherwise tell the investigator from the reviewer. This
+    // catches the naive self-audit and nothing more, which is why the stored
+    // audit is marked unverified.
+    expect(() =>
+      estate.auditFinding('INC-2048', {
+        auditor: 'sentinel-agent',
+        verdict: 'supported',
+        confidence: 95,
+        unsupported_claims: [],
+        gaps: [],
+        rationale: 'Looks right to me.',
+      }),
+    ).toThrow(/cannot be attributed to sentinel-agent/);
+  });
+
+  it('records the reviewer identity as unverified', () => {
+    estate.recordFinding(sampleFinding);
+    estate.auditFinding('INC-2048', {
+      auditor: 'evidence-auditor',
+      verdict: 'supported',
+      confidence: 90,
+      unsupported_claims: [],
+      gaps: [],
+      rationale: 'x',
+    });
+    // A field rather than a paragraph, so nothing downstream can present a
+    // self-declared reviewer as a confirmed independent one.
+    expect(estate.latestFinding()?.audit?.identity_verified).toBe(false);
+  });
+
   it('refuses an audit with no finding to audit', () => {
     expect(
       estate.auditFinding('INC-2048', {

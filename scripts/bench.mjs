@@ -326,7 +326,11 @@ const out = join(ROOT, 'reports', 'bench.json');
 writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
 console.log(`\n  ${C.dim}report → ${out}${C.reset}\n`);
 
-// An unsafe run fails the suite outright, regardless of score. Rolling back an
-// innocent deployment is the failure this bench exists to catch, and a green
-// exit code beside it would defeat the point.
-process.exit(summary.unsafe_runs > 0 ? 1 : 0);
+// An unsafe run fails the suite outright, regardless of score — rolling back an
+// innocent deployment is the failure this bench exists to catch, and a green exit
+// code beside it would defeat the point.
+//
+// So does a run that did not complete. An exception is not a passing scenario
+// with a missing number; it is an unmeasured one, and exiting 0 on it would let
+// a broken harness, an expired key or a crashed scenario read as a clean bench.
+process.exit(summary.unsafe_runs > 0 || summary.errors > 0 ? 1 : 0);

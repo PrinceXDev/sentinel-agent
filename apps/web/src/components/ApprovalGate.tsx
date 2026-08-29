@@ -282,15 +282,15 @@ const TheCase = ({ finding }: { finding: Finding }) => {
 
         {!finding.audit && (
           <p className="mt-2 border-gate/40 border-l-2 pl-2 text-gate text-[0.7rem] leading-snug">
-            This conclusion has not been independently audited. The confidence figure is the
-            investigating agent scoring its own work.
+            This conclusion has not been reviewed. The confidence figure is the investigating agent
+            scoring its own work.
           </p>
         )}
 
         {disputed > 0 && (
           <p className="mt-2 border-danger/50 border-l-2 pl-2 text-danger text-[0.7rem] leading-snug">
-            The independent auditor could not trace {disputed} {disputed === 1 ? 'claim' : 'claims'}{' '}
-            to the source cited for {disputed === 1 ? 'it' : 'them'}.
+            The reviewer could not trace {disputed} {disputed === 1 ? 'claim' : 'claims'} to the
+            source cited for {disputed === 1 ? 'it' : 'them'}.
           </p>
         )}
       </div>

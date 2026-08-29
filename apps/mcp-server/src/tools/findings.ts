@@ -170,19 +170,25 @@ export const auditFinding = defineTool({
   name: 'audit_finding',
   title: 'Audit a finding',
   description:
-    'Attach an independent critique to the most recent finding for an incident. Score the ' +
+    'Attach a second-opinion critique to the most recent finding for an incident. Score the ' +
     'EVIDENCE, not the conclusion: for each claim, decide whether the cited source actually ' +
     'supports it, and list the ones that do not. Then say what the investigation failed to look ' +
     "at. Your confidence is your own — do not reconcile it with the finding's. " +
-    'This must be called by a reviewer that did not perform the investigation. Requires human approval.',
+    'This must be called by a reviewer that did not perform the investigation. That separation ' +
+    'is a convention this server CANNOT enforce: MCP calls carry no caller identity, so the ' +
+    '`auditor` name is self-declared and is recorded as unverified. Requires human approval.',
   risk: 'write',
   inputSchema: {
     incident_id: z.string().min(1).describe('Incident id the finding belongs to.'),
     auditor: z
       .string()
       .min(1)
-      .default('evidence-auditor')
-      .describe('Who performed the audit. Defaults to "evidence-auditor".'),
+      .max(120)
+      .describe(
+        'Who performed the audit. Required, and deliberately not defaulted: a default of ' +
+          '"evidence-auditor" made a self-audit look like an independent one for free. This name ' +
+          'is self-declared and the server cannot verify it — see the tool description.',
+      ),
     verdict: z
       .enum(['supported', 'partially_supported', 'unsupported'])
       .describe('Whether the cited evidence carries the stated root cause.'),

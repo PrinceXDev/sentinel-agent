@@ -4,7 +4,7 @@
  * Two confidence numbers on one dial.
  *
  * The inner arc is the investigating agent's own confidence. The outer, thinner
- * arc is the independent auditor's — formed from the evidence alone, without
+ * arc is the reviewer's — formed from the evidence alone, without
  * being told what the investigation concluded.
  *
  * Drawing them concentrically rather than side by side is the whole design
@@ -156,7 +156,7 @@ const Readings = ({ finding }: { finding: Finding }) => {
           <p className={`text-[0.7rem] leading-snug ${diverges ? 'text-danger' : 'text-dim'}`}>
             {diverges
               ? 'The two views disagree. Read the audit before deciding.'
-              : 'Independent review broadly agrees.'}
+              : 'The reviewer broadly agrees.'}
           </p>
         </div>
       )}

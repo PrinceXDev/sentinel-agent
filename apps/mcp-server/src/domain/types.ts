@@ -152,7 +152,19 @@ export interface Finding {
  */
 export interface FindingAudit {
   readonly at: string;
+  /** Self-declared. See `identity_verified`. */
   readonly auditor: string;
+  /**
+   * Always `false`, and present precisely so nothing downstream can forget it.
+   *
+   * MCP tool calls carry no caller identity — the root agent and its subagents
+   * reach the ops server over the same stateless connector with the same token —
+   * so the server cannot confirm that the reviewer is a different agent from the
+   * investigator. The separation is a convention the agent instructions ask for
+   * and the harness does not enforce. A field is harder to overlook than a
+   * paragraph, and the console reads it to label the second opinion honestly.
+   */
+  readonly identity_verified: false;
   /** 0–100, the auditor's own number. Divergence from the finding's is the signal. */
   readonly confidence: number;
   readonly verdict: 'supported' | 'partially_supported' | 'unsupported';

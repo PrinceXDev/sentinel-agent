@@ -19,6 +19,15 @@ export const OnThisPage = () => {
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [active, setActive] = useState<string>('');
 
+  /**
+   * Keyed on `pathname` rather than mount: the docs layout persists across
+   * client-side navigation, so `OnThisPage` never remounts between pages. A
+   * mount-only effect here would keep scanning and observing the *first*
+   * page's headings forever — the TOC would freeze on whatever page loaded
+   * first and never catch up. Every dependency change tears down the previous
+   * observer before building the next one.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the re-scan trigger, not a value read inside
   useEffect(() => {
     const nodes = document.querySelectorAll<HTMLElement>(
       '#doc-article h2[id], #doc-article h3[id]',
@@ -45,12 +54,6 @@ export const OnThisPage = () => {
 
     for (const n of nodes) observer.observe(n);
     return () => observer.disconnect();
-  }, []);
-
-  // Re-scan when the route changes: the article is replaced, not remounted.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the signal, not a value used inside
-  useEffect(() => {
-    setActive('');
   }, [pathname]);
 
   if (headings.length === 0) return null;

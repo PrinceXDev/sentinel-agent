@@ -25,7 +25,7 @@ import {
 export const metadata: Metadata = {
   title: 'MCP tool surface — sentinel-agent docs',
   description:
-    'Ten tools over streamable HTTP. Seven run unattended, three are gated, and the risk class that decides which is a required field.',
+    'Thirteen tools over streamable HTTP. Eight run unattended, five are gated, and the risk class that decides which is a required field.',
 };
 
 const ToolsPage = () => {
@@ -34,7 +34,7 @@ const ToolsPage = () => {
       <PageHeader
         eyebrow="The safety model"
         title="MCP tool surface"
-        lead="Ten tools over streamable HTTP. The split between them is not a naming convention — it is the field that decides whether a call can happen while you are getting coffee."
+        lead="Thirteen tools over streamable HTTP. The split between them is not a naming convention — it is the field that decides whether a call can happen while you are getting coffee."
       />
 
       <Lead>
@@ -169,7 +169,7 @@ const ToolsPage = () => {
       />
       <CopyCommand
         command="npm test --workspace @sentinel-agent/mcp-server"
-        comment="72 tests, including the registry assertions"
+        comment="116 tests, including the registry assertions"
       />
 
       <PageNav href="/docs/tools" />

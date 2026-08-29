@@ -13,8 +13,10 @@
  * That is a setup step with a silent failure mode, performed by hand, that the
  * API can do exactly. So it is done here instead.
  *
- * Both operations are create-if-absent. Re-running is safe and reports what was
- * already there rather than failing on a conflict.
+ * The connector, provider and skill are create-if-absent. The agent is
+ * create-or-update, because its manifest carries `require_approval_for_tools`
+ * and a stale copy of that is not a harmless leftover — see `ensureAgent`.
+ * Re-running is safe either way.
  *
  * ## The model provider, and where the key lives
  *
@@ -33,7 +35,7 @@
  * worth registering, and `doctor` already reports a missing provider clearly.
  *
  * Usage:
- *   node scripts/provision.mjs           # provider + connector + skill
+ *   node scripts/provision.mjs           # provider + connector + skill + agent
  *   node scripts/provision.mjs --lab     # also the unannotated-twin connector
  */
 
@@ -332,6 +334,132 @@ async function ensureSkill(tf) {
 }
 
 /**
+ * Register the agent itself.
+ *
+ * The last manual step in the setup. The README used to say "take
+ * `agent/sentinel-agent.agent.json`, replace `REPLACE_WITH_YOUR_MODEL`, and
+ * create the agent" — which is a hand-edit of a committed file followed by an
+ * API call, and `require_approval_for_tools` cannot be set in the UI at all, so
+ * there was no click-through alternative either.
+ *
+ * ## Why this one updates in place, when connectors and providers do not
+ *
+ * The other two are left alone when they already exist, because their manifests
+ * hold secrets the list response redacts — there is no way to overwrite one
+ * without destroying an auth header or an API key the operator set by hand.
+ *
+ * An agent manifest holds no secrets, and it holds `require_approval_for_tools`.
+ * A stale copy is therefore not a harmless leftover: it is the approval policy,
+ * and a saved agent whose policy predates a change to the committed spec would
+ * run with gating this repository no longer describes. That is precisely the
+ * silent-bypass failure mode the whole project is arranged around, so the
+ * committed spec wins and drift is reported rather than preserved.
+ */
+async function ensureAgent(tf) {
+  const name = 'sentinel-agent';
+
+  // The committed spec ships with a placeholder, so the model has to be resolved
+  // before anything is registered. SENTINEL_MODEL is what the rest of the
+  // tooling reads; the provider this script registers is the fallback.
+  const model = env.SENTINEL_MODEL?.trim() || `${PROVIDER_NAME}/${MODEL_NAME}`;
+  if (model.includes('REPLACE_WITH_YOUR_MODEL')) {
+    record(
+      'fail',
+      `agent '${name}'`,
+      'no model resolved',
+      'Set SENTINEL_MODEL=provider/model in .env, then re-run.',
+    );
+    return;
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(ROOT, 'agent', 'sentinel-agent.agent.json'), 'utf8'));
+  } catch (error) {
+    record('fail', `agent '${name}'`, `could not read the committed spec (${describe(error)})`);
+    return;
+  }
+  manifest.model = { ...manifest.model, name: model };
+
+  let agents;
+  try {
+    agents = asList((await tf.agents.list()).data);
+  } catch (error) {
+    record('fail', `agent '${name}'`, `could not list (${describe(error)})`);
+    return;
+  }
+
+  const existing = agents.find((a) => (a.name ?? a.manifest?.name) === name);
+
+  if (!existing) {
+    try {
+      await tf.agents.create({ name, manifest });
+      record('ok', `agent '${name}'`, `registered → ${model}`);
+    } catch (error) {
+      record(
+        'fail',
+        `agent '${name}'`,
+        `create failed (${describe(error)})`,
+        'require_approval_for_tools is API-only, so there is no UI fallback for this one.',
+      );
+    }
+    return;
+  }
+
+  // Compared as canonical JSON rather than field by field: the interesting drift
+  // is anywhere in the manifest, and enumerating the fields worth checking is how
+  // the one that matters gets missed.
+  if (canonical(existing.manifest) === canonical(manifest)) {
+    record('ok', `agent '${name}'`, 'already registered — matches the committed spec');
+    return;
+  }
+
+  try {
+    await tf.agents.update(existing.id, { manifest });
+    record(
+      'ok',
+      `agent '${name}'`,
+      'updated — the saved manifest had drifted from the committed spec',
+    );
+  } catch (error) {
+    record(
+      'fail',
+      `agent '${name}'`,
+      `update failed (${describe(error)})`,
+      `The saved agent no longer matches agent/sentinel-agent.agent.json. Its approval policy may be stale — delete '${name}' in the harness and re-run.`,
+    );
+  }
+}
+
+/**
+ * Stable stringify, so neither key order nor key casing can masquerade as drift.
+ *
+ * Casing matters here and it is not obvious: the SDK serialises the manifest to
+ * snake_case on the wire — `mcp_servers`, `require_approval_for_tools`, exactly
+ * as the committed spec is written — but *deserialises* the response back into
+ * camelCase. So a manifest that has just been POSTed comes back structurally
+ * identical and textually different, and a naive comparison reports drift on
+ * every re-run, then PUTs an update that changes nothing.
+ *
+ * That is not merely noisy. "The saved manifest had drifted from the committed
+ * spec" is a real warning about the approval policy, and a version of it that
+ * fires every single time is one an operator learns to ignore.
+ */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .map((k) => [snakeCase(k), value[k]])
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+const snakeCase = (key) => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+
+/**
  * Keys that must never reach stdout, at any nesting depth.
  *
  * This script is the one place that POSTs a real credential, and error bodies
@@ -397,6 +525,11 @@ if (LAB) {
 }
 
 await ensureSkill(tf);
+
+// Last, deliberately: the agent's manifest names the connector and the skill by
+// string, so registering it after them means a first run reports the pieces in
+// the order they actually have to exist.
+await ensureAgent(tf);
 
 for (const { state, label, detail, fix } of results) {
   const mark =

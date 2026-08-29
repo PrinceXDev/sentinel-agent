@@ -2,12 +2,16 @@
 
 import type { RegisterableTool } from './define.js';
 import { destructiveTools } from './destructive.js';
+import { findingTools } from './findings.js';
+import { previewTools } from './preview.js';
 import { readTools } from './read.js';
 import { writeTools } from './write.js';
 
 export const allTools: readonly RegisterableTool[] = [
   ...readTools,
+  ...previewTools,
   ...writeTools,
+  ...findingTools,
   ...destructiveTools,
 ];
 

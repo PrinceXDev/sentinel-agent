@@ -24,7 +24,7 @@ export const PLATFORM_PIECES = [
   {
     n: '02',
     title: 'The tool surface',
-    body: 'Ten MCP tools over streamable HTTP, each built through a defineTool that requires a risk class and derives its annotations from it. Seven read-only run autonomously. Three write or destroy, and all three are gated.',
+    body: 'Thirteen MCP tools over streamable HTTP, each built through a defineTool that requires a risk class and derives its annotations from it. Eight read-only run autonomously — including a dry run that computes what a destructive call would change. Five write or destroy, and all five are gated.',
   },
   {
     n: '03',

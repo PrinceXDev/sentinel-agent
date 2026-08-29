@@ -89,8 +89,8 @@ const LimitsPage = () => {
 
       <UL>
         <LI>
-          The safety model. Ten of ten tools carry annotations on the wire, three are gated three
-          ways, and the tests assert it against the harness&rsquo;s own predicates.
+          The safety model. Thirteen of thirteen tools carry annotations on the wire, five are gated
+          three ways, and the tests assert it against the harness&rsquo;s own predicates.
         </LI>
         <LI>
           The credential boundary. No key reaches this repo, the sandbox, or the UI.{' '}

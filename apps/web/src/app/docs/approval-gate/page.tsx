@@ -118,10 +118,10 @@ const ApprovalGatePage = () => {
       </Steps>
 
       <Callout tone="win">
-        Verified on the wire against <C>@modelcontextprotocol/sdk</C> 1.30.0 — all ten tools carry
-        annotations into <C>tools/list</C>, zero unannotated. <C>npm run doctor</C> re-checks this
-        against the running server every time, because an unannotated tool is the one failure mode
-        that looks like success.
+        Verified on the wire against <C>@modelcontextprotocol/sdk</C> 1.30.0 — all thirteen tools
+        carry annotations into <C>tools/list</C>, zero unannotated. <C>npm run doctor</C> re-checks
+        this against the running server every time, because an unannotated tool is the one failure
+        mode that looks like success.
       </Callout>
 
       <CopyCommand

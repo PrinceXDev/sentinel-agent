@@ -47,3 +47,9 @@ npm-debug.log*
 # call it configuration.
 .agents/
 .claude/skills/
+
+# Throwaway probe/debug scripts written while driving WSL from the Windows side.
+# One of these (probe-tmp.sh) reached a commit before this rule existed.
+probe-tmp.sh
+probe*-tmp.sh
+setup-tmp.log

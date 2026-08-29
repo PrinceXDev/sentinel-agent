@@ -42,27 +42,27 @@ export const OPERATOR_TOKEN_HEADER = 'x-sentinel-operator';
 
 const STORAGE_KEY = 'sentinel-agent:operator-token';
 
-export function loadOperatorToken(): string | null {
+export const loadOperatorToken = (): string | null => {
   try {
     return window.sessionStorage.getItem(STORAGE_KEY);
   } catch {
     // Private browsing or storage disabled. The UI prompts again; nothing breaks.
     return null;
   }
-}
+};
 
-export function saveOperatorToken(token: string): void {
+export const saveOperatorToken = (token: string): void => {
   try {
     window.sessionStorage.setItem(STORAGE_KEY, token.trim());
   } catch {
     // Non-fatal: the token still applies to this page's in-memory client.
   }
-}
+};
 
-export function clearOperatorToken(): void {
+export const clearOperatorToken = (): void => {
   try {
     window.sessionStorage.removeItem(STORAGE_KEY);
   } catch {
     // Nothing actionable.
   }
-}
+};

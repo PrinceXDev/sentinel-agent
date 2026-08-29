@@ -34,7 +34,7 @@ interface ApprovalGateProps {
   onDeny: (toolCallId: string, reason?: string) => void;
 }
 
-export function ApprovalGate({ approvals, busy, onApprove, onDeny }: ApprovalGateProps) {
+export const ApprovalGate = ({ approvals, busy, onApprove, onDeny }: ApprovalGateProps) => {
   if (approvals.length === 0) return null;
 
   return (
@@ -70,9 +70,9 @@ export function ApprovalGate({ approvals, busy, onApprove, onDeny }: ApprovalGat
       </div>
     </section>
   );
-}
+};
 
-function ApprovalCard({
+const ApprovalCard = ({
   approval,
   busy,
   onApprove,
@@ -82,7 +82,7 @@ function ApprovalCard({
   busy: boolean;
   onApprove: (id: string) => void;
   onDeny: (id: string, reason?: string) => void;
-}) {
+}) => {
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState('');
 
@@ -167,14 +167,14 @@ function ApprovalCard({
       )}
     </article>
   );
-}
+};
 
 /** Pretty-print arguments, falling back to the raw string when it will not parse. */
-function formatArgs(raw: string): string | null {
+const formatArgs = (raw: string): string | null => {
   if (!raw.trim()) return null;
   try {
     return JSON.stringify(JSON.parse(raw) as unknown, null, 2);
   } catch {
     return raw;
   }
-}
+};

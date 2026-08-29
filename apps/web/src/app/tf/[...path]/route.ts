@@ -81,9 +81,9 @@ const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 const LOCAL_HOSTS = new Set(['localhost:3000', '127.0.0.1:3000']);
 
 /** True when this request's `Host` matches an expected local address. */
-function isLocalHost(req: NextRequest): boolean {
+const isLocalHost = (req: NextRequest): boolean => {
   return LOCAL_HOSTS.has(req.headers.get('host') ?? '');
-}
+};
 
 /**
  * Reject requests this proxy should not carry the harness token for.
@@ -125,7 +125,7 @@ function isLocalHost(req: NextRequest): boolean {
  * UI and a rule about which humans may approve which actions. See
  * docs/architecture.md § Trust model.
  */
-function denyReason(req: NextRequest): string | null {
+const denyReason = (req: NextRequest): string | null => {
   const mutating = MUTATING_METHODS.has(req.method);
   const local = isLocalHost(req);
 
@@ -161,7 +161,7 @@ function denyReason(req: NextRequest): string | null {
   }
 
   return null;
-}
+};
 
 /**
  * Compare without leaking length or content through timing.
@@ -169,26 +169,26 @@ function denyReason(req: NextRequest): string | null {
  * `timingSafeEqual` throws on differing lengths, which would itself be a signal,
  * so length is checked first and reported as a plain mismatch.
  */
-function constantTimeEquals(a: string, b: string): boolean {
+const constantTimeEquals = (a: string, b: string): boolean => {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
-}
+};
 
-function buildUpstreamUrl(req: NextRequest, segments: string[]): string {
+const buildUpstreamUrl = (req: NextRequest, segments: string[]): string => {
   // Rebuild rather than string-concatenating the raw path, so a crafted segment
   // cannot escape the upstream origin.
   const path = segments.map(encodeURIComponent).join('/');
   const url = new URL(`${UPSTREAM.replace(/\/$/, '')}/${path}`);
   url.search = req.nextUrl.search;
   return url.toString();
-}
+};
 
-async function proxy(
+const proxy = async (
   req: NextRequest,
   ctx: { params: Promise<{ path: string[] }> },
-): Promise<Response> {
+): Promise<Response> => {
   const { path } = await ctx.params;
 
   const denial = denyReason(req);
@@ -248,7 +248,7 @@ async function proxy(
     statusText: upstream.statusText,
     headers: responseHeaders,
   });
-}
+};
 
 export {
   proxy as GET,

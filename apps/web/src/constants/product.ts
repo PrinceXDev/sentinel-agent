@@ -1,0 +1,44 @@
+/** Content for the `/product` marketing page's hero and "platform underneath" sections. */
+
+export const HERO_POINTS = [
+  {
+    title: 'Investigation runs itself',
+    body: 'Five tabs of dashboards, deploy logs, diffs and arithmetic, done in one pass by an agent that reaches the real systems over MCP.',
+  },
+  {
+    title: 'Evidence, not vibes',
+    body: 'It exports 61 raw samples and computes the regression in a sandbox. The magnitude is never handed to it.',
+  },
+  {
+    title: 'Execution stays yours',
+    body: 'Every production-mutating tool pauses in the harness. The agent cannot bypass the gate, even by accident.',
+  },
+];
+
+export const PLATFORM_PIECES = [
+  {
+    n: '01',
+    title: 'The harness',
+    body: 'TrueForge carries the agent loop, MCP tool routing, approval gating, subagent delegation, sandbox orchestration, session persistence and context management. Remove it and this project does not degrade — it stops existing.',
+  },
+  {
+    n: '02',
+    title: 'The tool surface',
+    body: 'Ten MCP tools over streamable HTTP, each built through a defineTool that requires a risk class and derives its annotations from it. Seven read-only run autonomously. Three write or destroy, and all three are gated.',
+  },
+  {
+    n: '03',
+    title: 'The sandbox',
+    body: 'Python 3.13 with pandas, provisioned on demand — Daytona if configured, or TrueForge’s local provider with no external account at all. Tool calls from sandbox code are bridged back to the harness, so untrusted code cannot exfiltrate a key it never had.',
+  },
+  {
+    n: '04',
+    title: 'The credential boundary',
+    body: 'Every credential lives in the harness. The UI holds none, the MCP server holds none, the sandbox holds none. The one external key this repo ever touches is read once, by provision, and handed straight over.',
+  },
+  {
+    n: '05',
+    title: 'The proof',
+    body: '149 tests, annotations verified on the wire against the SDK, and a conformance suite that drives four different routes at a destructive tool and reports — honestly — which ones the harness actually stopped.',
+  },
+];

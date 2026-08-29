@@ -24,7 +24,7 @@ export interface EstateSnapshot {
   loading: boolean;
 }
 
-export function useEstate(refreshKey: number): EstateSnapshot {
+export const useEstate = (refreshKey: number): EstateSnapshot => {
   const [snapshot, setSnapshot] = useState<EstateSnapshot>({
     state: null,
     audit: null,
@@ -61,4 +61,4 @@ export function useEstate(refreshKey: number): EstateSnapshot {
   }, [refreshKey]);
 
   return snapshot;
-}
+};

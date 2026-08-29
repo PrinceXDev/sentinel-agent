@@ -1,5 +1,7 @@
 import { CommandCenter } from '@/components/CommandCenter';
 
-export default function Home() {
+const Home = () => {
   return <CommandCenter />;
-}
+};
+
+export default Home;

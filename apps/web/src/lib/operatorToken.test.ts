@@ -33,9 +33,9 @@ class MemoryStorage {
   }
 }
 
-function useStorage(storage: unknown): void {
+const useStorage = (storage: unknown): void => {
   vi.stubGlobal('window', { sessionStorage: storage });
-}
+};
 
 beforeEach(() => {
   useStorage(new MemoryStorage());

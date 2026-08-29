@@ -38,11 +38,11 @@ const apply = (...events: Event[]): void => {
   for (const event of events) reduce(state, event, index);
 };
 
-function turnCreated(id = 'ev_turn', turnId = 'turn_1'): Event {
+const turnCreated = (id = 'ev_turn', turnId = 'turn_1'): Event => {
   return { type: 'turn.created', id, turnId, createdAt: AT, state: { status: 'running' } } as Event;
-}
+};
 
-function rootThread(threadId = 'thr_root'): Event {
+const rootThread = (threadId = 'thr_root'): Event => {
   return {
     type: 'thread.created',
     id: `ev_${threadId}`,
@@ -50,9 +50,9 @@ function rootThread(threadId = 'thr_root'): Event {
     title: 'sentinel-agent',
     createdAt: AT,
   } as Event;
-}
+};
 
-function subThread(threadId: string, name: string, toolCallId = 'call_spawn'): Event {
+const subThread = (threadId: string, name: string, toolCallId = 'call_spawn'): Event => {
   return {
     type: 'thread.created',
     id: `ev_${threadId}`,
@@ -62,17 +62,17 @@ function subThread(threadId: string, name: string, toolCallId = 'call_spawn'): E
     parent: { threadId: 'thr_root', toolCallId },
     createdAt: AT,
   } as Event;
-}
+};
 
 /** A model message announcing one tool call — where a tool call first exists. */
-function messageWithToolCall(args: {
+const messageWithToolCall = (args: {
   eventId: string;
   callId: string;
   toolName: string;
   serverName?: string;
   argsJson: string;
   threadId?: string;
-}): Event {
+}): Event => {
   return {
     type: 'model.message',
     id: args.eventId,
@@ -89,7 +89,7 @@ function messageWithToolCall(args: {
       },
     ],
   } as unknown as Event;
-}
+};
 
 /**
  * A terminal `turn.done`.
@@ -97,7 +97,7 @@ function messageWithToolCall(args: {
  * `requiredActions` is the field that distinguishes a finished turn from a paused
  * one — both report `status: 'done'`.
  */
-function turnDone(requiredActions: { type: string }[]): Event {
+const turnDone = (requiredActions: { type: string }[]): Event => {
   return {
     type: 'turn.done',
     id: 'ev_done',
@@ -105,14 +105,14 @@ function turnDone(requiredActions: { type: string }[]): Event {
     createdAt: AT,
     state: { status: 'done', requiredActions, completedAt: AT },
   } as unknown as Event;
-}
+};
 
 /**
  * A terminal `turn.done` whose state carries `status: 'error'` — a mid-turn
  * model-provider failure (a rate limit, an exhausted credit balance), not the
  * absence of required actions. Distinct from `turnDone()` above.
  */
-function turnErrored(message: string): Event {
+const turnErrored = (message: string): Event => {
   return {
     type: 'turn.done',
     id: 'ev_errored',
@@ -120,9 +120,9 @@ function turnErrored(message: string): Event {
     createdAt: AT,
     state: { status: 'error', message, completedAt: AT },
   } as unknown as Event;
-}
+};
 
-function approvalRequired(callId: string, sourceEventId: string, threadId = 'thr_root'): Event {
+const approvalRequired = (callId: string, sourceEventId: string, threadId = 'thr_root'): Event => {
   return {
     type: 'tool.approval_required',
     id: `ev_gate_${callId}`,
@@ -130,7 +130,7 @@ function approvalRequired(callId: string, sourceEventId: string, threadId = 'thr
     createdAt: AT,
     toolCalls: [{ id: callId, sourceEventId }],
   } as Event;
-}
+};
 
 describe('turn lifecycle', () => {
   it('marks the run running and records the turn id', () => {

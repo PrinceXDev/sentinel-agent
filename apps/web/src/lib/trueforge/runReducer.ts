@@ -26,20 +26,20 @@ import type { PendingApproval, RunState, TimelineEntry, ToolCallView } from './t
 type AnyEvent = TrueForgeApi.TurnStreamingEvent;
 
 /** Truncate a long string for a timeline label without hiding that it was cut. */
-function preview(text: string, max = 120): string {
+const preview = (text: string, max = 120): string => {
   const collapsed = text.replace(/\s+/g, ' ').trim();
   return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
-}
+};
 
-function push(state: RunState, entry: TimelineEntry): void {
+const push = (state: RunState, entry: TimelineEntry): void => {
   // Events carry monotonic ULIDs, so arrival order is chronological and a plain
   // append keeps the timeline sorted. Guard against duplicates, which happen
   // when a resume replays an event already seen before the disconnect.
   if (state.timeline.some((e) => e.id === entry.id && e.kind === entry.kind)) return;
   state.timeline.push(entry);
-}
+};
 
-function textOf(content: unknown): string {
+const textOf = (content: unknown): string => {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content
@@ -52,7 +52,7 @@ function textOf(content: unknown): string {
       return '';
     })
     .join('');
-}
+};
 
 /**
  * Fold one event into the run state.
@@ -62,7 +62,7 @@ function textOf(content: unknown): string {
  * React re-renders are driven by a version counter in the hook instead.
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: an exhaustive switch over the protocol's twelve event types. Splitting it into twelve one-caller functions would scatter the state transitions across the file without removing a single branch, and would make it harder to see that every event type is handled.
-export function reduce(state: RunState, event: AnyEvent, index: EventIndex): RunState {
+export const reduce = (state: RunState, event: AnyEvent, index: EventIndex): RunState => {
   const stored = index.record(event);
   const at =
     'createdAt' in stored && stored.createdAt ? String(stored.createdAt) : new Date().toISOString();
@@ -385,19 +385,19 @@ export function reduce(state: RunState, event: AnyEvent, index: EventIndex): Run
       return state;
     }
   }
-}
+};
 
 /** Approvals whose tool call has not already completed or been denied. */
-export function activeApprovals(state: RunState): PendingApproval[] {
+export const activeApprovals = (state: RunState): PendingApproval[] => {
   return state.pendingApprovals.filter((approval) => {
     const call = state.toolCalls.get(approval.toolCallId);
     return !call || call.status === 'awaiting_approval';
   });
-}
+};
 
 /** Subagent threads, root excluded, in dispatch order. */
-export function subagents(state: RunState) {
+export const subagents = (state: RunState) => {
   return [...state.threads.values()]
     .filter((t) => t.kind === 'subagent')
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-}
+};

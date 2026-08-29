@@ -121,7 +121,7 @@ export interface RunState {
   error: string | null;
 }
 
-export function emptyRunState(): RunState {
+export const emptyRunState = (): RunState => {
   return {
     status: 'idle',
     sessionId: null,
@@ -137,7 +137,7 @@ export function emptyRunState(): RunState {
     mcpAuthRequired: [],
     error: null,
   };
-}
+};
 
 /** Persisted across reloads. This triple is the entire reconnect state. */
 export interface RunHandle {

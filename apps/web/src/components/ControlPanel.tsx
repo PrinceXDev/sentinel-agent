@@ -19,7 +19,7 @@ interface ControlPanelProps {
   estate: EstateSnapshot;
 }
 
-export function ControlPanel({ state, subagents, estate }: ControlPanelProps) {
+export const ControlPanel = ({ state, subagents, estate }: ControlPanelProps) => {
   const calls = [...state.toolCalls.values()];
   const completed = calls.filter((c) => c.status === 'completed').length;
   const gated = calls.filter((c) => c.status === 'awaiting_approval').length;
@@ -119,25 +119,33 @@ export function ControlPanel({ state, subagents, estate }: ControlPanelProps) {
       )}
     </aside>
   );
-}
+};
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+const Block = ({ title, children }: { title: string; children: React.ReactNode }) => {
   return (
     <section className="border-line border-b p-4">
       <h3 className="eyebrow mb-2.5">{title}</h3>
       {children}
     </section>
   );
-}
+};
 
-function Row({ label, value, tone = 'text-ink' }: { label: string; value: string; tone?: string }) {
+const Row = ({
+  label,
+  value,
+  tone = 'text-ink',
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) => {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-dim text-xs">{label}</dt>
       <dd className={`text-right font-mono text-xs ${tone}`}>{value}</dd>
     </div>
   );
-}
+};
 
 const STATUS_TONE: Record<ToolCallView['status'], string> = {
   requested: 'bg-steel-dim',
@@ -147,7 +155,7 @@ const STATUS_TONE: Record<ToolCallView['status'], string> = {
   completed: 'bg-ok',
 };
 
-function ToolRow({ call }: { call: ToolCallView }) {
+const ToolRow = ({ call }: { call: ToolCallView }) => {
   return (
     <li className="flex items-center gap-2">
       <span
@@ -162,4 +170,4 @@ function ToolRow({ call }: { call: ToolCallView }) {
       </span>
     </li>
   );
-}
+};

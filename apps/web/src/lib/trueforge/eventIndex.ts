@@ -77,7 +77,7 @@ export class EventIndex {
 }
 
 /** Parse tool arguments without letting malformed JSON break the render. */
-function parseArgs(raw: string): unknown {
+const parseArgs = (raw: string): unknown => {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as unknown;
@@ -86,7 +86,7 @@ function parseArgs(raw: string): unknown {
     // The raw string is kept on the view model either way.
     return null;
   }
-}
+};
 
 interface ToolCallLike {
   id: string;
@@ -100,13 +100,15 @@ interface ToolCallLike {
 }
 
 /** Pull name, server, and arguments off a tool call, whatever shape it arrived in. */
-export function describeToolCall(call: ToolCallLike): {
+export const describeToolCall = (
+  call: ToolCallLike,
+): {
   name: string;
   serverName: string | null;
   kind: 'mcp' | 'system';
   argsRaw: string;
   args: unknown;
-} {
+} => {
   const info = call.toolInfo;
   // `toolInfo.name` is the authoritative tool name; `function.name` is what the
   // model emitted and can be namespaced. Prefer the former, fall back cleanly.
@@ -121,7 +123,7 @@ export function describeToolCall(call: ToolCallLike): {
     argsRaw,
     args: parseArgs(argsRaw),
   };
-}
+};
 
 /**
  * Join a `tool.approval_required` event against the index into approvals a human
@@ -132,10 +134,10 @@ export function describeToolCall(call: ToolCallLike): {
  * blocked either way, and an approval the UI silently omits is one nobody can
  * clear. Better to show "details unavailable" and still offer the decision.
  */
-export function joinApprovals(
+export const joinApprovals = (
   event: TrueForgeApi.ToolApprovalRequiredEvent,
   index: EventIndex,
-): PendingApproval[] {
+): PendingApproval[] => {
   return event.toolCalls.map((ref): PendingApproval => {
     const source = index.get(ref.sourceEventId);
 
@@ -168,4 +170,4 @@ export function joinApprovals(
       resolved: false,
     };
   });
-}
+};

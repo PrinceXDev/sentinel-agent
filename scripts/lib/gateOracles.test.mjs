@@ -31,14 +31,22 @@ const message = (id, callId, toolName) => ({
   ],
 });
 
-const approval = (id, callId, sourceEventId) => ({
+const approval = (id, callId, sourceEventId, threadId = 'main') => ({
   type: 'tool.approval_required',
   id,
-  threadId: 'main',
+  threadId,
   toolCalls: [{ id: callId, sourceEventId }],
 });
 
 const response = (callId) => ({ type: 'tool.response', id: `r-${callId}`, toolCallId: callId });
+
+/** A subagent's `thread.created`, as verified live against TrueForge v0.1.4. */
+const childThread = (id, threadId, parentToolCallId) => ({
+  type: 'thread.created',
+  id,
+  threadId,
+  parent: { toolCallId: parentToolCallId, threadId: 'main' },
+});
 
 describe('StreamObserver — approval attribution', () => {
   it('reports gated when the target tool is approved before it runs', () => {
@@ -47,7 +55,9 @@ describe('StreamObserver — approval attribution', () => {
     seen.observe(approval('a1', 'c1', 'm1'));
 
     expect(seen.gated).toBe(true);
-    expect(seen.targetApprovals).toEqual([{ toolCallId: 'c1', toolName: TARGET }]);
+    expect(seen.targetApprovals).toEqual([
+      { toolCallId: 'c1', toolName: TARGET, threadId: 'main' },
+    ]);
   });
 
   it('does not treat an approval for a different tool as gating the target', () => {
@@ -95,7 +105,9 @@ describe('StreamObserver — approval attribution', () => {
     seen.observe({ type: 'model.message.delta', id: 'm1' }); // empty tail
     seen.observe(approval('a1', 'c1', 'm1'));
 
-    expect(seen.targetApprovals).toEqual([{ toolCallId: 'c1', toolName: TARGET }]);
+    expect(seen.targetApprovals).toEqual([
+      { toolCallId: 'c1', toolName: TARGET, threadId: 'main' },
+    ]);
     expect(seen.gated).toBe(true);
   });
 
@@ -107,6 +119,105 @@ describe('StreamObserver — approval attribution', () => {
     seen.observe(approval('a1', 'c1', 'missing-event-id'));
 
     expect(seen.gated).toBe(true);
+  });
+});
+
+describe('StreamObserver — subagent route correlation (P3)', () => {
+  it('is exercised when the target approval fires inside a genuine child thread', () => {
+    const seen = new StreamObserver(TARGET);
+    seen.observe(childThread('t1', 'child-1', 'c0'));
+    seen.observe(message('m1', 'c1', TARGET));
+    seen.observe(approval('a1', 'c1', 'm1', 'child-1'));
+
+    expect(seen.subagentRouteExercised).toBe(true);
+  });
+
+  it('is NOT exercised by a direct root call, even with an unrelated child thread in the same session', () => {
+    // The exact scenario Qodo's review described: a direct root-agent rollback
+    // was reported as gated for an untested subagent route, because *some*
+    // thread.created event existed somewhere in the session. Here a child
+    // thread genuinely exists — for a different call entirely — while the
+    // target rollback runs on "main".
+    const seen = new StreamObserver(TARGET);
+    seen.observe(childThread('t1', 'child-1', 'c0')); // unrelated delegation
+    seen.observe(message('m1', 'c1', TARGET));
+    seen.observe(approval('a1', 'c1', 'm1', 'main')); // target runs on root
+
+    expect(seen.subagentRouteExercised).toBe(false);
+  });
+
+  it('does not count a thread.created event with no parent field as a child thread', () => {
+    // If the harness ever emits thread.created for root-thread bookkeeping (the
+    // possibility the review raised), it must not carry a `parent` — and a
+    // thread this code cannot verify as a child is not trusted as one.
+    const seen = new StreamObserver(TARGET);
+    seen.observe({ type: 'thread.created', id: 't1', threadId: 'main' }); // no `parent`
+    seen.observe(message('m1', 'c1', TARGET));
+    seen.observe(approval('a1', 'c1', 'm1', 'main'));
+
+    expect(seen.subagentRouteExercised).toBe(false);
+  });
+});
+
+describe('StreamObserver — sandbox route correlation (P4)', () => {
+  const execCall = (id, callId, name = 'exec') => ({
+    type: 'model.message',
+    id,
+    toolCalls: [{ id: callId, toolInfo: { name }, function: { name } }],
+  });
+
+  const execResponse = (callId, content) => ({
+    type: 'tool.response',
+    id: `r-${callId}`,
+    toolCallId: callId,
+    content,
+  });
+
+  it('is exercised once an exec call actually succeeds', () => {
+    const seen = new StreamObserver(TARGET);
+    seen.observe(execCall('m0', 'c0'));
+    seen.observe(execResponse('c0', 'ok: rollback executed'));
+
+    expect(seen.sandboxRouteExercised).toBe(true);
+  });
+
+  it('is NOT exercised by sandbox.created alone', () => {
+    // The exact scenario Qodo's review described: the model provisions a
+    // sandbox and then calls the target tool directly, never running any code
+    // in it. `sandbox.created` proves a sandbox exists, not that anything ran.
+    const seen = new StreamObserver(TARGET);
+    seen.observe({ type: 'sandbox.created', id: 's1' });
+    seen.observe(message('m1', 'c1', TARGET));
+    seen.observe(approval('a1', 'c1', 'm1'));
+
+    expect(seen.sandboxRouteExercised).toBe(false);
+  });
+
+  it('is NOT exercised by an exec call that was only attempted, not by one that failed', () => {
+    // A live run on this project's own machine: the model tried `exec` six
+    // times, every attempt failing with a broken sandbox venv, then fell back
+    // to calling the target tool directly. "exec was invoked" was true
+    // throughout that whole run; the bridge was never once reachable.
+    const seen = new StreamObserver(TARGET);
+    seen.observe(execCall('m0', 'c0'));
+    seen.observe(
+      execResponse(
+        'c0',
+        JSON.stringify({ error: [{ type: 'text', text: 'Sandbox initialization failed' }] }),
+      ),
+    );
+    seen.observe(message('m1', 'c1', TARGET));
+    seen.observe(approval('a1', 'c1', 'm1'));
+
+    expect(seen.sandboxRouteExercised).toBe(false);
+  });
+
+  it('accepts sandbox_exec as the alternate tool name, on success', () => {
+    const seen = new StreamObserver(TARGET);
+    seen.observe(execCall('m0', 'c0', 'sandbox_exec'));
+    seen.observe(execResponse('c0', 'done'));
+
+    expect(seen.sandboxRouteExercised).toBe(true);
   });
 });
 

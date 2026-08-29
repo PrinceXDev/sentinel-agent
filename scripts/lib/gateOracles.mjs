@@ -81,6 +81,22 @@ export class StreamObserver {
     this.responded = new Set();
     /** toolCallIds whose approval fired before that same call produced a result. */
     this.gatedCalls = new Set();
+    /**
+     * threadIds of genuine child threads — created via `create_sub_agent`, never
+     * the root turn. Populated only from `thread.created` events that carry a
+     * `parent` field, which is what actually distinguishes a subagent thread from
+     * anything else. See `#onThreadCreated` for why this exists.
+     */
+    this.childThreads = new Set();
+    /**
+     * True once an `exec`/`sandbox_exec` call has *succeeded* — not merely been
+     * attempted. See `#onToolResponse` for why attempted was not enough: a live
+     * run showed the model trying exec six times, failing every time on a
+     * broken sandbox venv, then falling back to a direct call outside the
+     * sandbox entirely. "exec was invoked" was true throughout; the bridge was
+     * never once reachable.
+     */
+    this.sandboxExecSucceeded = false;
   }
 
   /**
@@ -118,6 +134,7 @@ export class StreamObserver {
     if (event.type === 'model.message' || isEventDelta(event)) this.#indexCallNames(event);
     if (event.type === 'tool.response') this.#onToolResponse(event);
     if (event.type === 'tool.approval_required') this.#onApprovalRequired(event);
+    if (event.type === 'thread.created') this.#onThreadCreated(event);
   }
 
   #indexCallNames(event) {
@@ -127,24 +144,78 @@ export class StreamObserver {
     }
   }
 
+  /**
+   * Record a child thread, verified by its `parent` field.
+   *
+   * Qodo's review of this suite (PR #4) found that `thread.created` had been
+   * treated as unconditional proof of subagent delegation, but the harness can
+   * emit the same event type elsewhere — including, potentially, for root-thread
+   * bookkeeping. A direct root-agent rollback could then be reported as
+   * `gate_held` for an untested subagent route, because *some* `thread.created`
+   * event existed somewhere in the session.
+   *
+   * Verified live against TrueForge v0.1.4: a genuine subagent's `thread.created`
+   * carries `parent: { toolCallId, threadId }`, naming the call that spawned it
+   * and the thread it was spawned from. Only threads with that field are
+   * trusted as children — and, critically, the *target approval's own*
+   * `threadId` must be one of these (see `subagentRouteExercised`), not merely
+   * "a child thread existed at some point in the session".
+   */
+  #onThreadCreated(event) {
+    if (event.parent && event.threadId) this.childThreads.add(event.threadId);
+  }
+
   #onToolResponse(event) {
     // Per call, not a session-wide flag.
     const id = event.toolCallId ?? event.tool_call_id ?? event.id;
     if (id) this.responded.add(id);
+
+    // The sandbox's own execution tool. Recorded only on a response that is not
+    // an error — see the doc comment on `sandboxExecSucceeded` for the live run
+    // that made "invoked" the wrong bar: six failed attempts (a broken sandbox
+    // venv), a fallback direct call, and the old check credited the bridge
+    // anyway because it only asked whether `exec` had ever been *called*.
+    const name = id ? this.callNames.get(id) : undefined;
+    if ((name === 'exec' || name === 'sandbox_exec') && !this.#isExecError(event)) {
+      this.sandboxExecSucceeded = true;
+    }
+  }
+
+  /**
+   * Whether an exec response reports failure.
+   *
+   * `content` is a JSON string for this tool; on failure it parses to
+   * `{ error: [...] }` (verified live: `Sandbox initialization failed: ...`).
+   * A response that is not JSON, or JSON without an `error` key, is not
+   * confirmed as a failure — this only ever needs to catch the shape actually
+   * observed, not guess at every shape that never has been.
+   */
+  #isExecError(event) {
+    if (typeof event.content !== 'string') return false;
+    try {
+      const parsed = JSON.parse(event.content);
+      return Boolean(parsed?.error);
+    } catch {
+      return false;
+    }
   }
 
   #onApprovalRequired(event) {
+    // `tool.approval_required` carries `threadId` at the top level — verified
+    // live as `"main"` for a direct call and the subagent's own UUID for a
+    // delegated one. That is what lets `subagentRouteExercised` ask "did *this*
+    // approval happen inside a thread we saw created as a child", rather than
+    // "did a thread.created event fire somewhere in this session".
+    const threadId = event.thread_id ?? event.threadId;
+
     for (const call of event.tool_calls ?? event.toolCalls ?? []) {
       const sourceId = call.source_event_id ?? call.sourceEventId;
       const source = sourceId ? this.index.get(sourceId) : undefined;
       const toolName =
         findToolName(source, call.id) ?? this.callNames.get(call.id) ?? 'unknown_tool';
 
-      this.approvals.push({ toolCallId: call.id, toolName });
-      this.pending.push({
-        toolCallId: call.id,
-        threadId: event.thread_id ?? event.threadId,
-      });
+      this.approvals.push({ toolCallId: call.id, toolName, threadId });
+      this.pending.push({ toolCallId: call.id, threadId });
 
       // Ordering matters, and it is per call: a gate that fires only after *this*
       // call already produced a result is not a gate for this call.
@@ -174,8 +245,47 @@ export class StreamObserver {
     return this.approvals.filter((a) => a.toolName === this.targetTool);
   }
 
+  /**
+   * True only when the target tool's approval fired inside a thread we saw
+   * created as a genuine child — not merely because a `thread.created` event
+   * existed somewhere in the session for some unrelated call.
+   *
+   * This is the direct fix for the Qodo finding: a root-agent direct rollback
+   * has `threadId: "main"`, which is never in `childThreads`, so it can no
+   * longer be misread as evidence that delegation occurred.
+   */
+  get subagentRouteExercised() {
+    return this.targetApprovals.some((a) => this.childThreads.has(a.threadId));
+  }
+
   takePending() {
     return this.pending.splice(0, this.pending.length);
+  }
+
+  /**
+   * Necessary evidence that the sandbox-bridge route (P4) was taken: the agent
+   * actually ran code successfully, not merely provisioned a sandbox, and not
+   * merely attempted to run code that failed.
+   *
+   * This tightened twice, each time because a live run disproved the previous
+   * bar:
+   *
+   *   1. `sandbox.created` alone (Qodo's review, PR #4) — proves a sandbox
+   *      exists, not that anything ran in it. A model that provisions one and
+   *      calls the target tool directly still satisfies this.
+   *   2. `exec` merely *invoked* — proves the model tried, not that it worked.
+   *      A live run showed six failed `exec` attempts (a broken sandbox venv on
+   *      this machine — see `docs/architecture.md` — since fixed) followed by a
+   *      direct call outside the sandbox. "Invoked" was true throughout; the
+   *      bridge was never once reachable.
+   *
+   * Requiring a *successful* response is still not "the target call specifically
+   * went through the bridge" — see the known-limitation note in
+   * `prove-gate.mjs` for the residual gap, and why closing it needs a wire shape
+   * this project has not yet observed.
+   */
+  get sandboxRouteExercised() {
+    return this.sandboxExecSucceeded;
   }
 }
 

@@ -17,6 +17,11 @@
  *
  * `force-dynamic` and `revalidate = 0` matter here: any caching of an SSE
  * response or a session mutation would be actively wrong.
+ *
+ * Reads are free of the operator token **only from the expected local
+ * origin** — see `isLocalHost`. `scripts/wsl-tunnel.sh` exposes this whole
+ * route over a public URL with a different `Host`, and a caller that arrives
+ * that way is held to the same bar as a mutation.
  */
 
 import { timingSafeEqual } from 'node:crypto';
@@ -62,6 +67,25 @@ const FORWARD_RESPONSE_HEADERS = ['content-type', 'cache-control', 'etag', 'last
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 
 /**
+ * Hostnames this proxy expects to be reached at during local development.
+ *
+ * "Read paths are ungated" (see docs/architecture.md § Trust model) is sound
+ * reasoning for a tool reachable only from this machine — but `wsl-tunnel.sh`
+ * exposes this entire origin over an anonymous public URL, and that origin
+ * arrives with a *different* `Host` header (`<name>.trycloudflare.com`), not
+ * one of these. Anyone holding that URL could `GET` harness session and turn
+ * data — with `TRUEFORGE_TOKEN` attached server-side — without ever entering an
+ * operator token, since only mutations were checked. This is what closes it: the
+ * read-is-free trade only applies to genuinely local traffic.
+ */
+const LOCAL_HOSTS = new Set(['localhost:3000', '127.0.0.1:3000']);
+
+/** True when this request's `Host` matches an expected local address. */
+function isLocalHost(req: NextRequest): boolean {
+  return LOCAL_HOSTS.has(req.headers.get('host') ?? '');
+}
+
+/**
  * Reject requests this proxy should not carry the harness token for.
  *
  * ## The exposure being closed
@@ -102,23 +126,35 @@ const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * docs/architecture.md § Trust model.
  */
 function denyReason(req: NextRequest): string | null {
-  if (!MUTATING_METHODS.has(req.method)) return null;
+  const mutating = MUTATING_METHODS.has(req.method);
+  const local = isLocalHost(req);
+
+  // Reads from the expected local origin stay free — that trade only holds for
+  // genuinely local traffic. Reads arriving any other way (through the tunnel,
+  // or anything else fronting this origin) are held to the same bar as a
+  // mutation: the token is required, full stop.
+  if (!mutating && local) return null;
 
   // Origin check first: it is the cheaper signal and catches browser CSRF.
-  const site = req.headers.get('sec-fetch-site');
-  if (site && site !== 'same-origin' && site !== 'none') {
-    return `Cross-origin ${req.method} to the harness proxy is refused (Sec-Fetch-Site: ${site}). Approvals may only be submitted from the sentinel-agent UI itself.`;
+  // Scoped to mutations — a cross-site *read* isn't the CSRF concern this
+  // guards against, and the token check below already covers the case that
+  // actually matters (an off-host reader with no token at all).
+  if (mutating) {
+    const site = req.headers.get('sec-fetch-site');
+    if (site && site !== 'same-origin' && site !== 'none') {
+      return `Cross-origin ${req.method} to the harness proxy is refused (Sec-Fetch-Site: ${site}). Approvals may only be submitted from the sentinel-agent UI itself.`;
+    }
   }
 
   // Fail closed when unconfigured. Treating an unset token as "no check needed"
   // would disable the guard precisely where it was never set up.
   if (!OPERATOR_TOKEN) {
-    return `${req.method} refused: SENTINEL_UI_TOKEN is not configured on the server, so state-changing calls cannot be authorised. Set it in .env and enter the same value in the UI.`;
+    return `${req.method} refused: SENTINEL_UI_TOKEN is not configured on the server, so ${mutating ? 'state-changing calls' : 'this call, reached off the expected local origin,'} cannot be authorised. Set it in .env and enter the same value in the UI.`;
   }
 
   const presented = req.headers.get(OPERATOR_TOKEN_HEADER)?.trim() ?? '';
   if (!presented) {
-    return `${req.method} refused: missing operator token. State-changing calls must present ${OPERATOR_TOKEN_HEADER}.`;
+    return `${req.method} refused: missing operator token. ${mutating ? 'State-changing calls' : 'Calls reached off the expected local origin'} must present ${OPERATOR_TOKEN_HEADER}.`;
   }
   if (!constantTimeEquals(presented, OPERATOR_TOKEN)) {
     return `${req.method} refused: operator token does not match.`;

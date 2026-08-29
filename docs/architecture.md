@@ -150,10 +150,20 @@ refused rather than allowed — an unset credential must never mean "no check
 needed", because that disables the guard in exactly the deployment that never
 configured it.
 
-Read paths are ungated. Investigation is read-only and needs no credential, so
+Read paths are ungated **from the expected local origin** — `localhost:3000` or
+`127.0.0.1:3000`. Investigation is read-only and needs no credential there, so
 gating it would put a login wall in front of a local tool for no benefit — and
 would train the operator to paste the token reflexively, which is the opposite of
 the intent.
+
+That trade holds only while the origin really is local. `scripts/wsl-tunnel.sh`
+exposes this same origin over an anonymous public URL with a different `Host`,
+and a request arriving that way is held to the mutation bar instead: the
+operator token is required, and a caller with no token gets nothing to read.
+Without that, anyone holding the tunnel URL could pull harness session and turn
+data — with the server-held `TRUEFORGE_TOKEN` doing the work — without ever
+supplying a credential of their own, since only mutations were originally
+checked.
 
 ### What is deliberately not modelled
 

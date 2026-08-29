@@ -82,16 +82,16 @@ interface Cancellation {
  * approval for an already-resolved call is a 422. The authoritative state still
  * arrives via events; this only closes the window between click and first event.
  */
-function applyDecisionOptimistically(
+const applyDecisionOptimistically = (
   state: RunState,
   toolCallId: string,
   status: 'allow' | 'deny',
-): void {
+): void => {
   const call = state.toolCalls.get(toolCallId);
   if (call) call.status = status === 'allow' ? 'running' : 'denied';
   state.pendingApprovals = state.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
   state.status = 'running';
-}
+};
 
 /** What was true before an optimistic decision, so a failure can be undone. */
 interface DecisionSnapshot {
@@ -101,14 +101,14 @@ interface DecisionSnapshot {
   readonly runStatus: RunStatus;
 }
 
-function snapshotDecision(state: RunState, toolCallId: string): DecisionSnapshot {
+const snapshotDecision = (state: RunState, toolCallId: string): DecisionSnapshot => {
   return {
     approvals: [...state.pendingApprovals],
     toolCallStatus: state.toolCalls.get(toolCallId)?.status ?? null,
     toolCallId,
     runStatus: state.status,
   };
-}
+};
 
 /**
  * Undo an optimistic decision whose submission failed.
@@ -117,14 +117,14 @@ function snapshotDecision(state: RunState, toolCallId: string): DecisionSnapshot
  * actually reached the harness and the failure was in reading the response, so
  * re-offering the approval would produce a duplicate submission and a 422.
  */
-function restoreDecision(state: RunState, snapshot: DecisionSnapshot): void {
+const restoreDecision = (state: RunState, snapshot: DecisionSnapshot): void => {
   const call = state.toolCalls.get(snapshot.toolCallId);
   if (call?.status === 'completed') return;
 
   state.pendingApprovals = snapshot.approvals;
   if (call && snapshot.toolCallStatus) call.status = snapshot.toolCallStatus;
   state.status = snapshot.runStatus;
-}
+};
 
 /**
  * Re-attach to a turn that was in flight when the page unloaded.
@@ -143,7 +143,7 @@ function restoreDecision(state: RunState, snapshot: DecisionSnapshot): void {
  * reading on its own, and because a five-argument pure-ish function is easier to
  * follow than the same branching nested inside an effect.
  */
-async function resumeRun(args: {
+const resumeRun = async (args: {
   handle: { sessionId: string; turnId: string; lastSequenceNumber: number };
   client: TrueForge;
   state: RunState;
@@ -151,7 +151,7 @@ async function resumeRun(args: {
   cancellation: Cancellation;
   consume: ConsumeFn;
   onProgress: () => void;
-}): Promise<void> {
+}): Promise<void> => {
   const { handle, client, state, index, cancellation, consume, onProgress } = args;
 
   const { data: turn } = await client.sessions.getTurn(handle.sessionId, handle.turnId);
@@ -174,9 +174,9 @@ async function resumeRun(args: {
   });
   if (cancellation.cancelled) return;
   await consume(stream, handle.sessionId);
-}
+};
 
-export function useAgentRun(): UseAgentRun {
+export const useAgentRun = (): UseAgentRun => {
   const stateRef = useRef<RunState>(emptyRunState());
   const indexRef = useRef<EventIndex>(new EventIndex());
   const clientRef = useRef<TrueForge | null>(null);
@@ -466,4 +466,4 @@ export function useAgentRun(): UseAgentRun {
     tokenRefusal,
     clearTokenRefusal,
   };
-}
+};

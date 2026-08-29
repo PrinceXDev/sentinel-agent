@@ -77,10 +77,10 @@ export interface EstateError {
 
 export type EstateResult<T> = { ok: true; data: T } | { ok: false; error: EstateError };
 
-async function get<T>(
+const get = async <T>(
   path: string,
   guard: (value: unknown) => value is T,
-): Promise<EstateResult<T>> {
+): Promise<EstateResult<T>> => {
   try {
     const response = await fetch(`/estate/${path}`, { cache: 'no-store' });
     const body = (await response.json()) as unknown;
@@ -118,25 +118,25 @@ async function get<T>(
       },
     };
   }
-}
+};
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
-}
+};
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /** Every element satisfies `check`. Empty arrays pass, which is correct here. */
-function isArrayOf<T>(value: unknown, check: (v: unknown) => v is T): value is T[] {
+const isArrayOf = <T>(value: unknown, check: (v: unknown) => v is T): value is T[] => {
   return Array.isArray(value) && value.every(check);
-}
+};
 
-function isNote(v: unknown): v is EstateIncident['notes'][number] {
+const isNote = (v: unknown): v is EstateIncident['notes'][number] => {
   return isRecord(v) && isStr(v.at) && isStr(v.author) && isStr(v.body);
-}
+};
 
-function isIncident(v: unknown): v is EstateIncident {
+const isIncident = (v: unknown): v is EstateIncident => {
   return (
     isRecord(v) &&
     isStr(v.id) &&
@@ -149,9 +149,9 @@ function isIncident(v: unknown): v is EstateIncident {
     isStr(v.detected_by) &&
     isArrayOf(v.notes, isNote)
   );
-}
+};
 
-function isDeployment(v: unknown): v is EstateDeployment {
+const isDeployment = (v: unknown): v is EstateDeployment => {
   return (
     isRecord(v) &&
     isStr(v.id) &&
@@ -164,13 +164,13 @@ function isDeployment(v: unknown): v is EstateDeployment {
     isStr(v.status) &&
     isArrayOf(v.changed_files, isStr)
   );
-}
+};
 
-function isHealthCheck(v: unknown): v is EstateHealth['checks'][number] {
+const isHealthCheck = (v: unknown): v is EstateHealth['checks'][number] => {
   return isRecord(v) && isStr(v.name) && typeof v.ok === 'boolean' && isStr(v.detail);
-}
+};
 
-function isHealth(v: unknown): v is EstateHealth {
+const isHealth = (v: unknown): v is EstateHealth => {
   return (
     isRecord(v) &&
     isStr(v.service) &&
@@ -180,7 +180,7 @@ function isHealth(v: unknown): v is EstateHealth {
     isNum(v.replicas_desired) &&
     isArrayOf(v.checks, isHealthCheck)
   );
-}
+};
 
 /**
  * Validate an `/estate/state` payload down to its leaves.
@@ -199,7 +199,7 @@ function isHealth(v: unknown): v is EstateHealth {
  * `null` is accepted for `live_deployment` and `health` because the server
  * genuinely sends null for an unknown service — that is valid, not malformed.
  */
-export function isEstateState(value: unknown): value is EstateState {
+export const isEstateState = (value: unknown): value is EstateState => {
   return (
     isRecord(value) &&
     isStr(value.service) &&
@@ -208,15 +208,13 @@ export function isEstateState(value: unknown): value is EstateState {
     (value.health === null || isHealth(value.health)) &&
     isArrayOf(value.deployments, isDeployment)
   );
-}
+};
 
-function isAuditPayload(value: unknown): value is { entries: AuditEntry[] } {
-  return isRecord(value) && Array.isArray(value.entries);
-}
+const isAuditPayload = (value: unknown): value is { entries: AuditEntry[] } =>
+  isRecord(value) && Array.isArray(value.entries);
 
-function isToolsPayload(value: unknown): value is { tools: EstateToolInfo[] } {
-  return isRecord(value) && Array.isArray(value.tools);
-}
+const isToolsPayload = (value: unknown): value is { tools: EstateToolInfo[] } =>
+  isRecord(value) && Array.isArray(value.tools);
 
 export const estate = {
   state: () => get('state', isEstateState),
@@ -231,9 +229,9 @@ export const estate = {
  * them fails with the same message. Reporting the first is informative; reporting
  * all of them is the same sentence repeated.
  */
-export function firstFailure(results: EstateResult<unknown>[]): EstateError | null {
+export const firstFailure = (results: EstateResult<unknown>[]): EstateError | null => {
   for (const result of results) {
     if (!result.ok) return result.error;
   }
   return null;
-}
+};

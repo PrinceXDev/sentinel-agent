@@ -27,15 +27,15 @@ const STATUS_HINTS: Record<number, string> = {
 const TIMEOUT_MESSAGE =
   'The harness did not respond in time. A long investigation can outlive the request timeout — the turn may still be running, and reloading will re-attach to it.';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
-}
+};
 
 /**
  * The `message` field from an error body, whether it arrived parsed or as a JSON
  * string. Both the proxy route and the harness return `{ error, message }`.
  */
-function messageFromBody(body: unknown): string | null {
+const messageFromBody = (body: unknown): string | null => {
   if (isRecord(body) && typeof body.message === 'string' && body.message.trim()) {
     return body.message;
   }
@@ -53,13 +53,13 @@ function messageFromBody(body: unknown): string | null {
   }
 
   return null;
-}
+};
 
 /** What a status code means here, when the body carried nothing useful. */
-function messageFromStatus(statusCode: number | undefined): string | null {
+const messageFromStatus = (statusCode: number | undefined): string | null => {
   if (statusCode === undefined) return null;
   return STATUS_HINTS[statusCode] ?? `The harness returned ${statusCode}.`;
-}
+};
 
 /**
  * Pull the most specific message available out of a thrown value.
@@ -67,7 +67,7 @@ function messageFromStatus(statusCode: number | undefined): string | null {
  * Order matters: the server's own `message` beats a generic status hint, which in
  * turn beats the SDK's transport-shaped string.
  */
-export function describeError(error: unknown): string {
+export const describeError = (error: unknown): string => {
   if (error instanceof TrueForgeTimeoutError) {
     return TIMEOUT_MESSAGE;
   }
@@ -85,7 +85,7 @@ export function describeError(error: unknown): string {
   }
 
   return 'Something failed and produced no message. Check the browser console and the harness logs.';
-}
+};
 
 /** Marker the proxy puts on a refusal, so it can be told from a harness 403. */
 const PROXY_FORBIDDEN = 'forbidden';
@@ -99,7 +99,7 @@ const PROXY_FORBIDDEN = 'forbidden';
  * other is not fixable at all. Matching on the `error` discriminator rather than
  * the status code is what keeps them apart.
  */
-export function isOperatorTokenRefusal(error: unknown): boolean {
+export const isOperatorTokenRefusal = (error: unknown): boolean => {
   if (!(error instanceof TrueForgeError) || error.statusCode !== 403) return false;
 
   const body = error.body;
@@ -115,4 +115,4 @@ export function isOperatorTokenRefusal(error: unknown): boolean {
   }
 
   return false;
-}
+};

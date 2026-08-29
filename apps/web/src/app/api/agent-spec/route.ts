@@ -35,7 +35,7 @@ interface AgentSpec {
 
 const spec = rawSpec as AgentSpec;
 
-export function GET(): Response {
+export const GET = (): Response => {
   const model = process.env.SENTINEL_MODEL?.trim();
 
   if (!model) {
@@ -60,4 +60,4 @@ export function GET(): Response {
     spec: { ...spec, model: { ...spec.model, name: model } },
     ...(overrodeSpecModel ? { overrodeSpecModel } : {}),
   });
-}
+};

@@ -25,10 +25,10 @@ export const runtime = 'nodejs';
 
 const UPSTREAM = process.env.OPS_MCP_BASE_URL ?? 'http://localhost:8940';
 
-export async function GET(
+export const GET = async (
   req: NextRequest,
   ctx: { params: Promise<{ path: string[] }> },
-): Promise<Response> {
+): Promise<Response> => {
   const { path } = await ctx.params;
   const safePath = path.map(encodeURIComponent).join('/');
   const url = new URL(`${UPSTREAM.replace(/\/$/, '')}/estate/${safePath}`);
@@ -58,4 +58,4 @@ export async function GET(
     status: upstream.status,
     headers: contentType ? { 'content-type': contentType } : {},
   });
-}
+};

@@ -21,7 +21,7 @@ export const PROXY_PREFIX = '/tf';
 /** Long enough for a full investigation; a streaming turn holds the connection open. */
 const TIMEOUT_SECONDS = 600;
 
-export function createClient(): TrueForge {
+export const createClient = (): TrueForge => {
   if (typeof window === 'undefined') {
     // The client is only ever constructed in browser components. Failing loudly
     // beats silently building a client with a wrong base URL during SSR.
@@ -37,7 +37,7 @@ export function createClient(): TrueForge {
       [OPERATOR_TOKEN_HEADER]: () => loadOperatorToken(),
     },
   });
-}
+};
 
 /** localStorage key holding the reconnect triple. */
 const HANDLE_KEY = 'sentinel-agent:run-handle';
@@ -55,16 +55,16 @@ export interface StoredHandle {
  * re-attach to a running turn after a reload — there is no resume endpoint, so
  * this triple plus `getTurn` is the whole mechanism.
  */
-export function saveHandle(handle: StoredHandle): void {
+export const saveHandle = (handle: StoredHandle): void => {
   try {
     window.localStorage.setItem(HANDLE_KEY, JSON.stringify(handle));
   } catch {
     // Private browsing or a full quota. Losing resume across reloads is a
     // degraded experience, not a broken one, so this is not worth surfacing.
   }
-}
+};
 
-export function loadHandle(): StoredHandle | null {
+export const loadHandle = (): StoredHandle | null => {
   try {
     const raw = window.localStorage.getItem(HANDLE_KEY);
     if (!raw) return null;
@@ -84,12 +84,12 @@ export function loadHandle(): StoredHandle | null {
   } catch {
     return null;
   }
-}
+};
 
-export function clearHandle(): void {
+export const clearHandle = (): void => {
   try {
     window.localStorage.removeItem(HANDLE_KEY);
   } catch {
     // Nothing actionable.
   }
-}
+};

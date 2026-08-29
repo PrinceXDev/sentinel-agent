@@ -25,7 +25,7 @@ interface OperatorTokenPromptProps {
   onDismiss: () => void;
 }
 
-export function OperatorTokenPrompt({ reason, onSaved, onDismiss }: OperatorTokenPromptProps) {
+export const OperatorTokenPrompt = ({ reason, onSaved, onDismiss }: OperatorTokenPromptProps) => {
   const [value, setValue] = useState('');
 
   const submit = () => {
@@ -94,4 +94,4 @@ export function OperatorTokenPrompt({ reason, onSaved, onDismiss }: OperatorToke
       </form>
     </section>
   );
-}
+};

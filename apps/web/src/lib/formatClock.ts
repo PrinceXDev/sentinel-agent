@@ -13,7 +13,7 @@
  * regex, not literal characters, so the search silently matched nothing. One
  * shared function means there is exactly one place left to get this wrong.
  */
-export function formatClock(iso: string): string {
+export const formatClock = (iso: string): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '--:--:--';
   return d.toLocaleTimeString('en-GB', {
@@ -21,4 +21,4 @@ export function formatClock(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   });
-}
+};

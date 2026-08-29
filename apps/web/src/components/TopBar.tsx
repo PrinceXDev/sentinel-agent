@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import type { RunStatus } from '@/lib/trueforge/types';
 
 const STATUS_COPY: Record<RunStatus, { label: string; tone: string; live: boolean }> = {
@@ -21,7 +23,7 @@ interface TopBarProps {
   toolCallCount: number;
 }
 
-export function TopBar({ status, sessionId, sandboxId, toolCallCount }: TopBarProps) {
+export const TopBar = ({ status, sessionId, sandboxId, toolCallCount }: TopBarProps) => {
   const s = STATUS_COPY[status];
 
   return (
@@ -31,6 +33,12 @@ export function TopBar({ status, sessionId, sandboxId, toolCallCount }: TopBarPr
           sentinel-agent
         </span>
         <span className="eyebrow hidden sm:inline">incident response</span>
+        <Link
+          href="/docs"
+          className="hidden text-[12px] text-dim transition hover:text-steel lg:inline"
+        >
+          docs
+        </Link>
       </div>
 
       <div className="flex items-center gap-3 sm:gap-5">
@@ -58,13 +66,13 @@ export function TopBar({ status, sessionId, sandboxId, toolCallCount }: TopBarPr
       </div>
     </header>
   );
-}
+};
 
-function Stat({ label, value }: { label: string; value: string }) {
+const Stat = ({ label, value }: { label: string; value: string }) => {
   return (
     <div className="hidden flex-col gap-0.5 md:flex">
       <span className="eyebrow">{label}</span>
       <span className="tnum font-mono text-[0.7rem] text-muted">{value}</span>
     </div>
   );
-}
+};

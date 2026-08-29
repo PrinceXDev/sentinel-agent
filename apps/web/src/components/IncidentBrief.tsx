@@ -38,7 +38,7 @@ interface IncidentBriefProps {
   error: string | null;
 }
 
-export function IncidentBrief({ state, error }: IncidentBriefProps) {
+export const IncidentBrief = ({ state, error }: IncidentBriefProps) => {
   if (error) {
     return (
       <div className="border-danger/30 border-b bg-danger/5 px-3 py-3 sm:px-5">
@@ -127,9 +127,9 @@ export function IncidentBrief({ state, error }: IncidentBriefProps) {
       )}
     </div>
   );
-}
+};
 
-function Fact({
+const Fact = ({
   label,
   value,
   tone = 'text-ink',
@@ -139,11 +139,11 @@ function Fact({
   value: string;
   tone?: string;
   mono?: boolean;
-}) {
+}) => {
   return (
     <div className="flex flex-col gap-0.5">
       <dt className="eyebrow">{label}</dt>
       <dd className={`text-xs ${mono ? 'tnum font-mono' : ''} ${tone}`}>{value}</dd>
     </div>
   );
-}
+};

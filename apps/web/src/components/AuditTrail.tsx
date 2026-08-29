@@ -23,7 +23,7 @@ interface AuditTrailProps {
   loading: boolean;
 }
 
-export function AuditTrail({ entries, error, loading }: AuditTrailProps) {
+export const AuditTrail = ({ entries, error, loading }: AuditTrailProps) => {
   if (error) {
     return <p className="break-words text-danger text-xs leading-relaxed">{error}</p>;
   }
@@ -55,4 +55,4 @@ export function AuditTrail({ entries, error, loading }: AuditTrailProps) {
       ))}
     </ol>
   );
-}
+};

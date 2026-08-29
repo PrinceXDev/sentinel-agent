@@ -47,7 +47,7 @@ interface TimelineProps {
   toolCalls: Map<string, ToolCallView>;
 }
 
-export function Timeline({ entries, rootThreadId, toolCalls }: TimelineProps) {
+export const Timeline = ({ entries, rootThreadId, toolCalls }: TimelineProps) => {
   const visible = entries.filter((e) => e.kind !== 'tool_result');
 
   if (visible.length === 0) {
@@ -125,7 +125,7 @@ export function Timeline({ entries, rootThreadId, toolCalls }: TimelineProps) {
       })}
     </ol>
   );
-}
+};
 
 const CHIP: Record<ToolCallView['status'], { label: string; className: string }> = {
   requested: { label: 'running', className: 'border-steel-dim text-steel' },
@@ -138,7 +138,7 @@ const CHIP: Record<ToolCallView['status'], { label: string; className: string }>
   completed: { label: 'ok', className: 'border-ok/40 text-ok' },
 };
 
-function StatusChip({ call }: { call: ToolCallView }) {
+const StatusChip = ({ call }: { call: ToolCallView }) => {
   const chip = CHIP[call.status];
   return (
     <span
@@ -147,4 +147,4 @@ function StatusChip({ call }: { call: ToolCallView }) {
       {chip.label}
     </span>
   );
-}
+};

@@ -23,10 +23,12 @@ export const metadata: Metadata = {
     'Autonomous incident response on the TrueForge agent harness, with irreversible actions held behind human approval.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="min-h-dvh bg-ground text-ink antialiased">{children}</body>
     </html>
   );
-}
+};
+
+export default RootLayout;

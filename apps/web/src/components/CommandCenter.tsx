@@ -27,7 +27,7 @@ const DEMO_PROMPT =
   'Determine whether the most recent deployment caused it, compute the magnitude from raw ' +
   'metrics, and prepare a remediation if the evidence supports one.';
 
-export function CommandCenter() {
+export const CommandCenter = () => {
   const run = useAgentRun();
   const { state, version, busy } = run;
   const [prompt, setPrompt] = useState(DEMO_PROMPT);
@@ -166,4 +166,4 @@ export function CommandCenter() {
       </div>
     </div>
   );
-}
+};

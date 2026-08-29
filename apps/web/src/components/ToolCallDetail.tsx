@@ -33,32 +33,32 @@ interface ExecArgs {
   cwd?: string;
 }
 
-function isExecArgs(name: string, args: unknown): args is ExecArgs {
+const isExecArgs = (name: string, args: unknown): args is ExecArgs => {
   return name === 'exec' && typeof args === 'object' && args !== null;
-}
+};
 
-function pretty(value: unknown, raw: string): string {
+const pretty = (value: unknown, raw: string): string => {
   if (value === null) return raw;
   try {
     return JSON.stringify(value, null, 2);
   } catch {
     return raw;
   }
-}
+};
 
 /**
  * Tool responses are JSON strings. Pretty-print when possible; a 61-row CSV
  * embedded in a JSON field is unreadable as one line.
  */
-function prettyResult(result: string): string {
+const prettyResult = (result: string): string => {
   try {
     return JSON.stringify(JSON.parse(result) as unknown, null, 2);
   } catch {
     return result;
   }
-}
+};
 
-export function ToolCallDetail({ call }: { call: ToolCallView }) {
+export const ToolCallDetail = ({ call }: { call: ToolCallView }) => {
   const [open, setOpen] = useState(false);
   const exec = isExecArgs(call.name, call.args) ? call.args : null;
 
@@ -95,9 +95,9 @@ export function ToolCallDetail({ call }: { call: ToolCallView }) {
       )}
     </div>
   );
-}
+};
 
-function ExecBody({ exec }: { exec: ExecArgs }) {
+const ExecBody = ({ exec }: { exec: ExecArgs }) => {
   return (
     <>
       {exec.intent && (
@@ -113,16 +113,16 @@ function ExecBody({ exec }: { exec: ExecArgs }) {
       />
     </>
   );
-}
+};
 
-function ArgsBody({ call }: { call: ToolCallView }) {
+const ArgsBody = ({ call }: { call: ToolCallView }) => {
   if (!call.argsRaw.trim()) {
     return <p className="text-dim text-xs">No arguments.</p>;
   }
   return <Field label="arguments" body={pretty(call.args, call.argsRaw)} />;
-}
+};
 
-function Field({
+const Field = ({
   label,
   body,
   accent = false,
@@ -132,7 +132,7 @@ function Field({
   body: string;
   accent?: boolean;
   muted?: boolean;
-}) {
+}) => {
   return (
     <div>
       <span className="eyebrow">{label}</span>
@@ -145,10 +145,10 @@ function Field({
       </pre>
     </div>
   );
-}
+};
 
-function durationOf(from: string, to: string): string {
+const durationOf = (from: string, to: string): string => {
   const ms = Date.parse(to) - Date.parse(from);
   if (!Number.isFinite(ms) || ms < 0) return '';
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
+};

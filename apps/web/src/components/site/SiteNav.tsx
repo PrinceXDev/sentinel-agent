@@ -12,7 +12,7 @@ export const SiteNav = ({ variant = 'floating' }: { variant?: 'floating' | 'dock
       }
     >
       <nav className="mx-auto flex h-16 max-w-[1180px] items-center gap-6 px-6">
-        <Link href="/product" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5">
           <Sigil />
           <span className="font-mono font-medium text-[15px] text-ink tracking-tight">
             sentinel<span className="text-dim">-agent</span>
@@ -41,7 +41,7 @@ export const SiteNav = ({ variant = 'floating' }: { variant?: 'floating' | 'dock
             GitHub
           </a>
           <Link
-            href="/"
+            href="/console"
             className="rounded-md border border-steel-dim bg-steel/10 px-3.5 py-2 font-medium text-[13.5px] text-steel transition hover:bg-steel/20"
           >
             Open console

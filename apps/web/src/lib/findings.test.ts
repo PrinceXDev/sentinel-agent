@@ -16,8 +16,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { HEADLINE_ARGS, TIER_PRESENTATION, tierFor } from '../constants/approval';
-import { ACTION_PRESENTATION, UNKNOWN_ACTION, unsupportedClaims } from '../constants/finding';
+import { HEADLINE_ARGS, TIER_PRESENTATION, tierFor } from '@/constants/approval';
+import { ACTION_PRESENTATION, UNKNOWN_ACTION, unsupportedClaims } from '@/constants/finding';
 import { type Finding, isFindingsPayload } from './estate';
 
 const finding: Finding = {

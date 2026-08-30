@@ -276,7 +276,7 @@ describe('findings', () => {
     expect(estate.recordFinding({ ...sampleFinding, incident_id: 'INC-0000' })).toBeUndefined();
   });
 
-  it('attaches an independent audit and records the confidence gap', () => {
+  it('attaches a second-opinion audit and records the confidence gap', () => {
     estate.recordFinding(sampleFinding);
     estate.auditFinding('INC-2048', {
       auditor: 'evidence-auditor',

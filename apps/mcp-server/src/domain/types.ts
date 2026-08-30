@@ -136,7 +136,7 @@ export interface Finding {
   readonly ruled_out: readonly RuledOut[];
   readonly verification_plan: string;
   readonly injections_detected: readonly InjectionReport[];
-  /** Set by `audit_finding`, when an independent reviewer has scored it. */
+  /** Set by `audit_finding`, when a second reviewer has scored it. Identity is unverified. */
   audit: FindingAudit | null;
 }
 

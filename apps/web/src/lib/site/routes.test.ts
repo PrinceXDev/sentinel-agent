@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { FOOTER_COLUMNS } from '../../constants/site';
+import { FOOTER_COLUMNS } from '@/constants/site';
 import { internalHrefs, routesOnDisk } from './routes';
 
 /** A throwaway `app`-shaped tree, so route resolution can be tested on shapes this repo lacks. */

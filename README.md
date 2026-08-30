@@ -12,7 +12,7 @@ Built on [TrueForge](https://trueforge.dev) · [Agent Harness Hackathon](https:/
 
 [![CI](https://github.com/PrinceXDev/sentinel-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/PrinceXDev/sentinel-agent/actions/workflows/ci.yml)
 [![live](https://img.shields.io/badge/live-sentinel--agent--web.vercel.app-000?logo=vercel)](https://sentinel-agent-web.vercel.app)
-[![tests](https://img.shields.io/badge/tests-289%20passing-4fb286)](#verify-the-safety-model)
+[![tests](https://img.shields.io/badge/tests-298%20passing-4fb286)](#verify-the-safety-model)
 [![Qodo](https://img.shields.io/badge/Qodo-21%20findings%2C%2021%20addressed-634FD1)](#%EF%B8%8F-qodo-code-review-evidence)
 [![TrueForge](https://img.shields.io/badge/TrueForge-agent%20harness-5b9dbf)](https://trueforge.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](apps/web/tsconfig.json)
@@ -528,7 +528,7 @@ Unlike the connector, the provider and the skill — which are create-if-absent,
 npm test
 ```
 
-289 tests (118 MCP + 116 UI + 55 script/oracle). The ones that matter for the safety model are in `apps/mcp-server/src/tools/registry.test.ts`; the ones that matter for the conformance suite's own correctness are in `scripts/lib/gateOracles.test.mjs`.
+298 tests (118 MCP + 125 UI + 55 script/oracle). The ones that matter for the safety model are in `apps/mcp-server/src/tools/registry.test.ts`; the ones that matter for the conformance suite's own correctness are in `scripts/lib/gateOracles.test.mjs`.
 
 To confirm annotations reach the wire:
 
@@ -588,7 +588,7 @@ run on this project's dev machine — no Daytona key anywhere in it.
 | `npm run bench`     | Scores the agent's judgement against four scenarios with known ground truth |
 | `npm run dev:mcp`   | Ops MCP server, watch mode                            |
 | `npm run dev:web`   | Next.js UI on `127.0.0.1:3000`                        |
-| `npm test`          | Full suite (289 tests)                                |
+| `npm test`          | Full suite (298 tests)                                |
 | `npm run typecheck` | `tsc --noEmit`, strict across both workspaces         |
 | `npm run lint`      | Biome lint                                            |
 | `npm run check`     | Biome lint + format, writing fixes                    |

@@ -9,9 +9,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Relative rather than the `@/` alias: this module is covered by a test, and
-// vitest resolves no path aliases here.
-import { FOOTER_COLUMNS, NAV_LINKS } from '../../constants/site';
+import { FOOTER_COLUMNS, NAV_LINKS } from '@/constants/site';
 
 export const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'app');
 

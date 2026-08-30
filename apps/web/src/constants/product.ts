@@ -42,3 +42,24 @@ export const PLATFORM_PIECES = [
     body: '149 tests, annotations verified on the wire against the SDK, and a conformance suite that drives four different routes at a destructive tool and reports — honestly — which ones the harness actually stopped.',
   },
 ];
+
+/**
+ * The three layers that make an unannotated destructive tool impossible.
+ *
+ * Ordered as the homepage renders them: structural first, because it is the one
+ * that removes the mistake rather than detecting it.
+ */
+export const GATE_LAYERS: { readonly title: string; readonly body: string }[] = [
+  {
+    title: 'Structural',
+    body: 'Every tool is built through defineTool, which requires a risk class and derives annotations from it. No code path registers a tool without them.',
+  },
+  {
+    title: 'Tested',
+    body: "registry.test.ts asserts against the harness's own predicates rather than our labels. Add a destructive tool without classifying it and CI fails.",
+  },
+  {
+    title: 'Belt and braces',
+    body: 'The agent spec names the destructive tools literally as well as by tag, so the gate holds even if an SDK version drops annotations in transit.',
+  },
+];

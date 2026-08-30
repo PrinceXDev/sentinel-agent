@@ -9,7 +9,8 @@ import { Reveal } from '@/components/site/Reveal';
 import { SiteFooter } from '@/components/site/SiteFooter';
 import { SiteNav } from '@/components/site/SiteNav';
 import { SmoothScroll } from '@/components/site/SmoothScroll';
-import { HERO_POINTS, PLATFORM_PIECES } from '@/constants/product';
+import { CMD_CLONE, CMD_DOCTOR, CMD_PROVE_GATE } from '@/constants/commands';
+import { GATE_LAYERS, HERO_POINTS, PLATFORM_PIECES } from '@/constants/product';
 import { PRODUCT_FEATURES } from '@/constants/productFeatures';
 
 export const metadata: Metadata = {
@@ -169,20 +170,7 @@ const ProductOverview = () => {
           </Reveal>
 
           <Reveal stagger className="mt-8 grid gap-5 md:grid-cols-3">
-            {[
-              [
-                'Structural',
-                'Every tool is built through defineTool, which requires a risk class and derives annotations from it. No code path registers a tool without them.',
-              ],
-              [
-                'Tested',
-                "registry.test.ts asserts against the harness's own predicates rather than our labels. Add a destructive tool without classifying it and CI fails.",
-              ],
-              [
-                'Belt and braces',
-                'The agent spec names the destructive tools literally as well as by tag, so the gate holds even if an SDK version drops annotations in transit.',
-              ],
-            ].map(([title, body]) => (
+            {GATE_LAYERS.map(({ title, body }) => (
               <div key={title} className="rounded-xl border border-line bg-surface p-6">
                 <h3 className="font-medium text-[15px] text-gate">{title}</h3>
                 <p className="mt-2.5 text-[13.5px] text-muted leading-relaxed">{body}</p>
@@ -193,7 +181,7 @@ const ProductOverview = () => {
           <Reveal>
             <div className="mt-8 text-[14px] text-dim">
               Verified against{' '}
-              <code className="font-mono text-muted">@modelcontextprotocol/sdk</code> 1.30.0 — 10/10
+              <code className="font-mono text-muted">@modelcontextprotocol/sdk</code> 1.30.0 — 13/13
               tools carry annotations into <code className="font-mono text-muted">tools/list</code>,
               zero unannotated.{' '}
               <Link href="/docs/approval-gate" className="text-steel hover:underline">
@@ -251,10 +239,7 @@ const ProductOverview = () => {
           </Reveal>
 
           <Reveal>
-            <CopyCommand
-              command="npm run prove:gate"
-              comment="writes reports/gate-conformance.json, committed as evidence"
-            />
+            <CopyCommand {...CMD_PROVE_GATE} />
             <Link
               href="/docs/gate-prover"
               className="inline-block border-line-strong border-b pb-1 text-[14px] text-ink transition hover:border-steel hover:text-steel"
@@ -279,11 +264,8 @@ const ProductOverview = () => {
             </p>
 
             <div className="mx-auto mt-9 max-w-[560px] text-left">
-              <CopyCommand command="git clone https://github.com/PrinceXDev/sentinel-agent && npm install" />
-              <CopyCommand
-                command="npm run doctor"
-                comment="tells you which of the five things is missing"
-              />
+              <CopyCommand {...CMD_CLONE} />
+              <CopyCommand {...CMD_DOCTOR} />
             </div>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

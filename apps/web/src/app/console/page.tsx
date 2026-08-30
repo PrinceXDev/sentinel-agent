@@ -4,13 +4,8 @@ import Link from 'next/link';
 import { CommandCenter } from '@/components/CommandCenter';
 
 /**
- * The operator console.
- *
- * Deliberately not the site root. It needs a local ops MCP server, a running
- * TrueForge harness, a model provider and an operator token — none of which
- * exist for a visitor arriving at a deployed URL, so serving it as the landing
- * page meant a first impression of "estate unavailable". The overview lives at
- * `/` instead and this is linked from it.
+ * Deliberately not the site root: this needs a local harness, which a visitor
+ * arriving at a deployed URL does not have.
  */
 export const metadata: Metadata = {
   title: 'Operator console — sentinel-agent',
@@ -19,12 +14,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * A static notice, not a connectivity check.
- *
- * On a deployed URL the estate is unreachable by construction, and the panels
- * below will say so. Saying it up front — before the reader concludes the
- * product is broken — costs one strip of chrome and is honest either way: it
- * makes no claim about whether a local harness is actually running.
+ * Static, not a connectivity check — it claims nothing about whether a harness
+ * is running. It exists so the estate error below reads as expected, not broken.
  */
 const LocalOnlyNotice = () => (
   <div className="border-line border-b bg-surface px-3 py-2.5 sm:px-5">

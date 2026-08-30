@@ -1,9 +1,7 @@
 /**
- * Shell commands shown in more than one place.
- *
- * Only the repeated ones live here. `npm run doctor` appears on three pages and
- * `npm run prove:gate` on two, so a change to either had three or two places to
- * miss; a command used once stays inline next to the prose that explains it.
+ * Shell commands shown in more than one place — `npm run doctor` appears on
+ * three pages, `npm run prove:gate` on two. A command used once stays inline
+ * next to the prose that explains it.
  */
 
 export interface ShellCommand {

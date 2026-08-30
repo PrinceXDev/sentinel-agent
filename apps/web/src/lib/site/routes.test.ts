@@ -1,59 +1,67 @@
 /**
- * Every internal link resolves to a route that exists.
+ * Covers `routes.ts`, and through it every internal link in the site chrome.
  *
- * This PR moved the site's entry point — the console went from `/` to `/console`
- * and the overview took its place — and the failure mode of getting that wrong is
- * a 404 on a link nobody clicked before shipping. Three of them had to be updated
- * by hand across two constants files and a nav component.
- *
- * So the assertion is made against the filesystem rather than against a second
- * hand-written list: every `href` in the nav and footer is resolved to a
- * `page.tsx` under `src/app`. A renamed or deleted route fails here instead of in
- * a judge's browser.
+ * This PR moved the site's entry point, and the failure mode of getting that
+ * wrong is a 404 on a link nobody clicked before shipping.
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
-import { FOOTER_COLUMNS, NAV_LINKS } from '../../constants/site';
+import { FOOTER_COLUMNS } from '../../constants/site';
+import { internalHrefs, routesOnDisk } from './routes';
 
-const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'app');
-
-/** Route paths the App Router will actually serve, derived from the tree. */
-const routesOnDisk = (): Set<string> => {
-  const found = new Set<string>();
-
-  const walk = (dir: string, route: string): void => {
-    if (existsSync(join(dir, 'page.tsx'))) found.add(route === '' ? '/' : route);
-
-    for (const entry of readdirSync(dir)) {
-      const child = join(dir, entry);
-      if (!statSync(child).isDirectory()) continue;
-      // Route groups and private folders do not contribute a path segment, and
-      // dynamic segments cannot be matched against a static href.
-      if (entry.startsWith('_') || entry.startsWith('(') || entry.startsWith('[')) continue;
-      walk(child, `${route}/${entry}`);
-    }
-  };
-
-  walk(APP_DIR, '');
-  return found;
+/** A throwaway `app`-shaped tree, so route resolution can be tested on shapes this repo lacks. */
+const fixture = (dirs: string[]): string => {
+  const root = mkdtempSync(join(tmpdir(), 'routes-'));
+  for (const d of dirs) {
+    const full = join(root, d);
+    mkdirSync(full, { recursive: true });
+    writeFileSync(join(full, 'page.tsx'), 'export default () => null;');
+  }
+  return root;
 };
 
-const internalHrefs = (): string[] => {
-  const fromFooter = FOOTER_COLUMNS.flatMap((c) => c.links.map((l) => l.href));
-  return [...NAV_LINKS.map((l) => l.href), ...fromFooter].filter((h) => h.startsWith('/'));
+const temps: string[] = [];
+const tree = (dirs: string[]): Set<string> => {
+  const root = fixture(dirs);
+  temps.push(root);
+  return routesOnDisk(root);
 };
+
+afterAll(() => {
+  for (const t of temps) rmSync(t, { recursive: true, force: true });
+});
+
+describe('routesOnDisk', () => {
+  it('maps nested directories to their path', () => {
+    expect(tree(['docs/tour'])).toEqual(new Set(['/docs/tour']));
+  });
+
+  it('treats a route group as contributing no path segment', () => {
+    // Qodo (Bug): parenthesised directories were skipped outright, so a page
+    // inside a group was invisible and a valid link would read as broken.
+    expect(tree(['(marketing)/about'])).toEqual(new Set(['/about']));
+  });
+
+  it('resolves a page directly inside a route group to the parent path', () => {
+    expect(tree(['(marketing)'])).toEqual(new Set(['/']));
+  });
+
+  it('ignores private folders and dynamic segments', () => {
+    // `_internal` is never routed; `[slug]` cannot be matched against a static href.
+    expect(tree(['_internal/thing', '[slug]'])).toEqual(new Set());
+  });
+});
 
 describe('site routes', () => {
   const routes = routesOnDisk();
 
   it('serves the overview at the root', () => {
-    // The console used to live here. A visitor has no local harness, so the
-    // landing page must not be something that reports "estate unavailable".
+    // The console used to live here, and a visitor has no local harness.
     expect(routes.has('/')).toBe(true);
   });
 
@@ -76,8 +84,8 @@ describe('site routes', () => {
   });
 
   it('checks a meaningful number of links', () => {
-    // Guards the guard: an empty or truncated constants export would make every
-    // `it.each` above vacuous and the suite would still pass.
+    // Guards the guard: a truncated constants export would make every `it.each`
+    // above vacuous and the suite would still pass.
     expect(internalHrefs().length).toBeGreaterThanOrEqual(10);
   });
 });

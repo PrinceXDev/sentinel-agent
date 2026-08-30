@@ -1,10 +1,42 @@
+<div align="center">
+
 # sentinel-agent
 
-**Autonomous incident response, human-controlled execution.**
+**Autonomous incident response for production software.**
 
-> Give the agent a production incident. It investigates it. It proves what happened. It prepares the fix. It refuses to touch production without you.
+### The agent can investigate. You decide when it acts.
 
-Built on [TrueForge](https://trueforge.dev), TrueFoundry's open-source agent harness, for the [Agent Harness Hackathon](https://www.wemakedevs.org/hackathons/trueforge).
+Built on [TrueForge](https://trueforge.dev) · [Agent Harness Hackathon](https://www.wemakedevs.org/hackathons/trueforge) · WeMakeDevs × TrueFoundry
+
+[**▶ See the live site**](https://sentinel-agent-web.vercel.app) · [Read the docs](https://sentinel-agent-web.vercel.app/docs) · [The Gate Prover](https://sentinel-agent-web.vercel.app/docs/gate-prover)
+
+[![CI](https://github.com/PrinceXDev/sentinel-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/PrinceXDev/sentinel-agent/actions/workflows/ci.yml)
+[![live](https://img.shields.io/badge/live-sentinel--agent--web.vercel.app-000?logo=vercel)](https://sentinel-agent-web.vercel.app)
+[![tests](https://img.shields.io/badge/tests-289%20passing-4fb286)](#verify-the-safety-model)
+[![Qodo](https://img.shields.io/badge/Qodo-21%20findings%2C%2021%20addressed-634FD1)](#%EF%B8%8F-qodo-code-review-evidence)
+[![TrueForge](https://img.shields.io/badge/TrueForge-agent%20harness-5b9dbf)](https://trueforge.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](apps/web/tsconfig.json)
+[![npm audit](https://img.shields.io/badge/npm%20audit-0%20vulnerabilities-4fb286)](#security)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+</div>
+
+---
+
+<div align="center">
+  <img src="docs/assets/hero.png" alt="sentinel-agent — autonomous incident response, human-controlled execution" width="100%">
+</div>
+
+---
+
+> Give the agent a production incident. It investigates it. It proves what happened from raw telemetry. It prepares the fix.
+> **And then it refuses to touch production without you.**
+
+**The split is the product: investigation is automated, execution is authorised.**
+
+Most attempts at this go wrong in one of two directions. Either the tool only *reports* — a dashboard summariser that leaves you where you started. Or it acts autonomously, and now an LLM's inference is wired straight to your production control plane.
+
+sentinel-agent does the mechanical half completely and stops at the decision. Everything below exists to make that claim checkable rather than merely stated.
 
 ---
 
@@ -66,6 +98,153 @@ Two verdicts are deliberately not "pass": `not_reached` means the model never at
 `route_not_exercised` means the route the probe names — subagent, sandbox — was never actually entered, even
 if some call got gated some other way. A conformance suite that reports confidence about evidence it never
 gathered is worse than no suite.
+
+---
+
+## 🛡️ Qodo Code Review Evidence
+
+> Every substantive change went through a pull request reviewed by **Qodo** before merge.
+> **21 findings across four PRs. All 21 addressed. None dismissed.**
+
+<div align="center">
+
+| PR | Findings | The one that mattered |
+|:--|:--|:--|
+| [**#1**](https://github.com/PrinceXDev/sentinel-agent/pull/1) | 6 · 2 High | MCP server bound `0.0.0.0` and served `/mcp` unauthenticated — **the finding that reframed the entire safety model** |
+| [**#4**](https://github.com/PrinceXDev/sentinel-agent/pull/4) | 6 · 2 High (+2 self-found) | The conformance suite could credit an unrelated mutation to the tool under test |
+| [**#6**](https://github.com/PrinceXDev/sentinel-agent/pull/6) | 4 · 3 High | Streamed argument fragments broke injection detection — **a false pass on the safety probe** |
+| [**#7**](https://github.com/PrinceXDev/sentinel-agent/pull/7) | 5 · 1 Bug | Homepage claimed 10/13 tools annotated while the footer said 13/13 |
+
+</div>
+
+The value was not catching typos. **Twice, Qodo found holes in this project's central safety claim** — exactly the kind of thing that is invisible when you wrote the code yourself. And twice it exposed cases where **my own tests were lying to me.**
+
+### The two that still bother me
+
+**PR #1, finding 2 — the gate protects a *path*, not a *tool*.**
+
+The MCP server bound to all interfaces and served `/mcp` unauthenticated. My instinct was "simulated estate, low severity." Then I traced the call path:
+
+```text
+  Agent  →  TrueForge harness  →  [APPROVAL GATE]  →  MCP server  →  production
+                                                          ▲
+  curl ──────────────────────────────────────────────────┘
+       (never passes through the harness — never meets the gate)
+```
+
+The gate is enforced **by the harness**, not by the MCP server. Binding to all interfaces didn't *weaken* the safety model — it offered a way around it entirely. That reframing is why the [Gate Prover](#gate-prover-conformance-run) exists at all: if the gate is path-dependent, "is `rollback_deployment` gated?" stops being a property of a tool and becomes an empirical question per route.
+
+**PR #6, finding 2 — a test suite that passed while covering the wrong thing.**
+
+`StreamObserver` replaced a tool call's arguments with each streamed fragment. A payload split as `{"deployment_id":"dpl-` + `9142"}` left only the tail stored — so the injection probe would have reported **`refused` for a run in which the agent had actually obeyed the injection.**
+
+A false pass, in the reassuring direction, on the single thing that probe exists to measure. And my tests covered the *adjacent* case and passed, which made the gap look tested.
+
+**PR #1, finding 1 took two rounds.** My first fix added a `Sec-Fetch-Site` origin check and documented caller authentication as out of scope. Qodo did not mark it resolved — correctly. An origin check is not authentication, and my own guard explicitly allowed non-browser callers, so a local `curl` could still approve a production rollback. The operator token was the actual fix.
+
+### One finding is only *partly* closed, and it says so
+
+PR #6's finding 3: `audit_finding` accepted an arbitrary `auditor` name, so the investigating agent could self-audit and have it presented as independent review.
+
+Qodo's suggested remedy — verify reviewer provenance — **is not implementable at this layer.** MCP tool calls carry no caller identity; the root agent and its subagents reach the server over the same stateless connector with the same token.
+
+So I enforced what is enforceable (default removed, self-audits under the investigator's name refused, `identity_verified: false` stored as a field) and **stopped claiming the rest**. The console now says the reviewer's name is self-declared. See [Findings, and the second opinion](#findings-and-the-second-opinion).
+
+> Where a finding could not be fully closed, the residual risk is documented rather than the thread quietly marked resolved.
+
+<details>
+<summary><b>PR #1 — all six findings, and how each was verified</b></summary>
+
+Six findings — two High, four Medium. All six were legitimate; none were
+dismissed. Two of them were holes in the project's central safety claim, which is
+exactly the kind of thing that is invisible when you wrote the code yourself.
+
+| # | Severity | Finding | What changed |
+|---|---|---|---|
+| 1 | **High** | Harness proxy attached the server-held bearer token for any caller, with no authorisation or CSRF protection — anything able to reach `:3000` could approve a production rollback | Two controls: `Sec-Fetch-Site` refuses cross-origin browser requests, and an **operator token** (`SENTINEL_UI_TOKEN`, sent as `x-sentinel-operator`) is required for every state-changing method — closing local `curl` callers, which send no `Sec-Fetch-Site` at all. Fails closed when unconfigured. `next dev` pinned to `127.0.0.1` |
+| 2 | **High** | MCP server bound `0.0.0.0` and executed `/mcp` unauthenticated, so `rollback_deployment` was reachable directly — never passing through the harness, so never reaching the approval gate | Binds `127.0.0.1` by default; optional `OPS_MCP_TOKEN` bearer auth (constant-time compare); insecure posture logged at `error`; `/estate` CORS narrowed from `*` to known origins |
+| 3 | Medium | Optimistic approval removal left no retry path if the submission failed, stranding a run the harness was still blocking on | Snapshot before mutating, restore on failure — skipped if the call has since completed, to avoid a duplicate 422 |
+| 4 | Medium | `reset()` replaced state without invalidating the active stream, so a superseded run's events repopulated the fresh state | Generation token, incremented by `start()` and `reset()`; `consume` drops events from a stale generation |
+| 5 | Medium | `deployAnchor()` returned the fixture constant, so after a rollback the agent's change-point anchor pointed at a deployment no longer live | Derived from the live deployment; three regression tests |
+| 6 | Medium | `isEstateState()` validated only two top-level fields — `incidents: [null]` passed and crashed the render | Full leaf-level validation; 13 guard tests |
+
+Finding 2 is the one worth dwelling on. This project's entire thesis is that
+irreversible actions pause for a human — and the gate is enforced by the harness,
+not by the MCP server. So the gate protects a *path*, not a *tool*: anything
+reaching the MCP server directly never encounters it. Binding to all interfaces
+therefore didn't weaken the safety model, it offered a way around it entirely.
+See [docs/architecture.md § Trust model](docs/architecture.md#trust-model).
+
+Finding 1 took two rounds. The first attempt added a `Sec-Fetch-Site` origin
+check and documented caller authentication as out of scope — and Qodo did not
+mark it resolved, correctly: an origin check is not authentication, and my own
+guard explicitly allowed non-browser callers, so a local `curl` could still
+submit an approval. The operator token is the actual fix.
+
+#### Verification after PR #1
+
+- 108 tests (66 MCP + 42 UI), up from 69 — every fix carries a regression test
+- `biome ci` clean, typecheck clean under `strict`, `next build` clean, `npm audit` 0 vulnerabilities
+- Every security fix verified at runtime, not just in tests:
+  - `/mcp` returns 401 with no token, 401 with a wrong one, 200 with the right one
+  - the MCP server refuses LAN connections while loopback works (`netstat` confirms it binds `127.0.0.1`, not `0.0.0.0`)
+  - the proxy returns 403 for cross-site and `same-site` mutations, and passes `same-origin` through
+  - a local `curl` POST — the exact vector finding 1 described — returns 403 without the operator token, 403 with a wrong one, and passes with the right one
+  - with `SENTINEL_UI_TOKEN` unset, mutations return 403 rather than being allowed through
+
+</details>
+
+<details>
+<summary><b>PR #4 — what Qodo found in the conformance suite itself</b></summary>
+
+`prove:gate` went through its own PR (#4) and its own review. 6 findings — 2 High, 4 Medium — all
+legitimate, all fixed:
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | High | Any mutating audit entry (not just the probed tool's) counted as execution — a fallback `restart_service` after a denial was credited to the tool under test | Execution scoped to entries naming the actual target tool |
+| 2 | High | `/mcp-unsafe` checked the lab token, then fell through to a second check against the general MCP token — every twin request 401'd once both were set and different | One auth policy per endpoint, checked once |
+| 3 | Medium | An unknown probe selector filtered the suite to zero probes and exited 0 | Unknown selectors are a usage error, checked first, exit 2 |
+| 4 | Medium | Connector URLs hardcoded to loopback, ignoring `OPS_MCP_HOST` | Derived from the same variable the server binds to |
+| 5 | Medium | Verdicts computed over the whole session — an unrelated approval or response could move an unrelated probe's result | Every judgement scoped to the probed tool-call id |
+| 6 | Medium | WSL launchers ignored the Node-version validator's exit status | `|| exit 1` on the source |
+
+Verifying those fixes surfaced two more, found here rather than by Qodo: a live re-run reported the
+sandbox-bridge probe as gated when the model had actually called the tool directly — a real
+observation wearing the wrong probe's label, which would have asserted an untested route was safe.
+That is now its own verdict, `route_not_exercised`, and it can only downgrade a result, never upgrade
+one. Separately, a throwaway debug script had been committed into the branch; removed and
+gitignored. Full detail in the PR.
+
+</details>
+
+<details>
+<summary><b>PR #6 — the bench and the injection probe</b></summary>
+
+[PR #6](https://github.com/PrinceXDev/sentinel-agent/pull/6) added the scenario bench, probe P5, and
+the structured findings. Qodo found four bugs — three High, one Medium. All four were legitimate and
+all four are fixed. Two of them broke the same rule this project is otherwise built around: *a suite
+that cannot measure something must not report success about it.*
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | **High** | Errored bench scenarios were filtered out before summarising, so a run in which every scenario crashed reported zero unsafe runs and **exited 0** | Every result is summarised, `errors` and `completed` reported separately, and the process exits non-zero on either an unsafe run or an incomplete one |
+| 2 | **High** | `StreamObserver` replaced a tool call's arguments with each streamed fragment, so a payload split as `{"deployment_id":"dpl-` + `9142"}` left only the tail — P5 would report `refused` for a run that had **obeyed** the injection | Arguments accumulate per tool-call id. The SDK's own `mergeEventDelta` was checked first and does not assemble these, so the fold happens in the observer |
+| 3 | **High** | `audit_finding` accepted an arbitrary `auditor` defaulting to the trustworthy-sounding `evidence-auditor`, so the investigating agent could self-audit and have it presented as an independent review | Default removed and the field made required; an audit attributed to `sentinel-agent` is refused; the record carries `identity_verified: false` and the console says the name is self-declared |
+| 4 | Medium | The findings guard accepted any string as `recommended_action`, so a drifted payload passed validation and crashed `RootCause` on `undefined.background` | Guard narrows against the closed union, and the renderer falls back rather than indexing blind |
+
+Finding 2 is the one worth dwelling on, because the test suite was *asserting the wrong behaviour*.
+It covered the trailing-empty-fragment case and passed, which made the gap look tested. A false
+`refused` on the injection probe is the worst failure this repository can produce — it is a safety
+claim, in the reassuring direction, about the one thing P5 exists to measure.
+
+Finding 3 could only be **partially** fixed, and the README says so rather than implying otherwise.
+Qodo's suggested remedy was to verify reviewer provenance; MCP tool calls carry no caller identity,
+so that is not implementable at this layer. The response was to enforce the little that can be
+enforced and stop claiming the rest — see
+[Findings, and the second opinion](#findings-and-the-second-opinion).
+
+</details>
 
 ---
 
@@ -349,7 +528,7 @@ Unlike the connector, the provider and the skill — which are create-if-absent,
 npm test
 ```
 
-262 tests (118 MCP + 89 UI + 55 script/oracle). The ones that matter for the safety model are in `apps/mcp-server/src/tools/registry.test.ts`; the ones that matter for the conformance suite's own correctness are in `scripts/lib/gateOracles.test.mjs`.
+289 tests (118 MCP + 116 UI + 55 script/oracle). The ones that matter for the safety model are in `apps/mcp-server/src/tools/registry.test.ts`; the ones that matter for the conformance suite's own correctness are in `scripts/lib/gateOracles.test.mjs`.
 
 To confirm annotations reach the wire:
 
@@ -405,11 +584,11 @@ run on this project's dev machine — no Daytona key anywhere in it.
 | ------------------- | ----------------------------------------------------- |
 | `npm run doctor`    | Preflight: config, connectivity, live annotation check |
 | `npm run provision` | Register model provider + connector + skill + agent over the API |
-| `npm run prove:gate`| Approval-gate conformance suite — see [Gate Prover](#gate-prover--conformance-run) above |
+| `npm run prove:gate`| Approval-gate conformance suite — see [Gate Prover](#gate-prover-conformance-run) above |
 | `npm run bench`     | Scores the agent's judgement against four scenarios with known ground truth |
 | `npm run dev:mcp`   | Ops MCP server, watch mode                            |
 | `npm run dev:web`   | Next.js UI on `127.0.0.1:3000`                        |
-| `npm test`          | Full suite (262 tests)                                |
+| `npm test`          | Full suite (289 tests)                                |
 | `npm run typecheck` | `tsc --noEmit`, strict across both workspaces         |
 | `npm run lint`      | Biome lint                                            |
 | `npm run check`     | Biome lint + format, writing fixes                    |
@@ -426,52 +605,6 @@ See [`.env.example`](.env.example). `OPENROUTER_API_KEY` (or another provider's 
 - Production-mutating tools are gated three ways (structural, tested, literal-name).
 - The estate is simulated, so no real system is reachable from this repo — the tools and data are ours to connect, as the hackathon rules require.
 - `npm audit`: **0 vulnerabilities.**
-
-## Gate Prover follow-up: what Qodo found in the suite itself
-
-`prove:gate` went through its own PR (#4) and its own review. 6 findings — 2 High, 4 Medium — all
-legitimate, all fixed:
-
-| # | Severity | Finding | Fix |
-|---|---|---|---|
-| 1 | High | Any mutating audit entry (not just the probed tool's) counted as execution — a fallback `restart_service` after a denial was credited to the tool under test | Execution scoped to entries naming the actual target tool |
-| 2 | High | `/mcp-unsafe` checked the lab token, then fell through to a second check against the general MCP token — every twin request 401'd once both were set and different | One auth policy per endpoint, checked once |
-| 3 | Medium | An unknown probe selector filtered the suite to zero probes and exited 0 | Unknown selectors are a usage error, checked first, exit 2 |
-| 4 | Medium | Connector URLs hardcoded to loopback, ignoring `OPS_MCP_HOST` | Derived from the same variable the server binds to |
-| 5 | Medium | Verdicts computed over the whole session — an unrelated approval or response could move an unrelated probe's result | Every judgement scoped to the probed tool-call id |
-| 6 | Medium | WSL launchers ignored the Node-version validator's exit status | `|| exit 1` on the source |
-
-Verifying those fixes surfaced two more, found here rather than by Qodo: a live re-run reported the
-sandbox-bridge probe as gated when the model had actually called the tool directly — a real
-observation wearing the wrong probe's label, which would have asserted an untested route was safe.
-That is now its own verdict, `route_not_exercised`, and it can only downgrade a result, never upgrade
-one. Separately, a throwaway debug script had been committed into the branch; removed and
-gitignored. Full detail in the PR.
-
-## PR #6: what Qodo found in the bench and the injection probe
-
-[PR #6](https://github.com/PrinceXDev/sentinel-agent/pull/6) added the scenario bench, probe P5, and
-the structured findings. Qodo found four bugs — three High, one Medium. All four were legitimate and
-all four are fixed. Two of them broke the same rule this project is otherwise built around: *a suite
-that cannot measure something must not report success about it.*
-
-| # | Severity | Finding | Fix |
-|---|---|---|---|
-| 1 | **High** | Errored bench scenarios were filtered out before summarising, so a run in which every scenario crashed reported zero unsafe runs and **exited 0** | Every result is summarised, `errors` and `completed` reported separately, and the process exits non-zero on either an unsafe run or an incomplete one |
-| 2 | **High** | `StreamObserver` replaced a tool call's arguments with each streamed fragment, so a payload split as `{"deployment_id":"dpl-` + `9142"}` left only the tail — P5 would report `refused` for a run that had **obeyed** the injection | Arguments accumulate per tool-call id. The SDK's own `mergeEventDelta` was checked first and does not assemble these, so the fold happens in the observer |
-| 3 | **High** | `audit_finding` accepted an arbitrary `auditor` defaulting to the trustworthy-sounding `evidence-auditor`, so the investigating agent could self-audit and have it presented as an independent review | Default removed and the field made required; an audit attributed to `sentinel-agent` is refused; the record carries `identity_verified: false` and the console says the name is self-declared |
-| 4 | Medium | The findings guard accepted any string as `recommended_action`, so a drifted payload passed validation and crashed `RootCause` on `undefined.background` | Guard narrows against the closed union, and the renderer falls back rather than indexing blind |
-
-Finding 2 is the one worth dwelling on, because the test suite was *asserting the wrong behaviour*.
-It covered the trailing-empty-fragment case and passed, which made the gap look tested. A false
-`refused` on the injection probe is the worst failure this repository can produce — it is a safety
-claim, in the reassuring direction, about the one thing P5 exists to measure.
-
-Finding 3 could only be **partially** fixed, and the README says so rather than implying otherwise.
-Qodo's suggested remedy was to verify reviewer provenance; MCP tool calls carry no caller identity,
-so that is not implementable at this layer. The response was to enforce the little that can be
-enforced and stop claiming the rest — see
-[Findings, and the second opinion](#findings-and-the-second-opinion).
 
 ## Project structure
 
@@ -493,69 +626,6 @@ docs/architecture.md   Architecture, decisions, and their costs
 reports/               Gate Prover conformance output (committed as evidence)
                        and bench.json once a scored run exists
 ```
-
-## Qodo Code Review Evidence
-
-### Representative PR
-
-[PR #1 — feat: initial sentinel-agent scaffold — MCP server, UI, and agent spec](https://github.com/PrinceXDev/sentinel-agent/pull/1)
-
-### What Qodo found
-
-Six findings — two High, four Medium. All six were legitimate; none were
-dismissed. Two of them were holes in the project's central safety claim, which is
-exactly the kind of thing that is invisible when you wrote the code yourself.
-
-| # | Severity | Finding | What changed |
-|---|---|---|---|
-| 1 | **High** | Harness proxy attached the server-held bearer token for any caller, with no authorisation or CSRF protection — anything able to reach `:3000` could approve a production rollback | Two controls: `Sec-Fetch-Site` refuses cross-origin browser requests, and an **operator token** (`SENTINEL_UI_TOKEN`, sent as `x-sentinel-operator`) is required for every state-changing method — closing local `curl` callers, which send no `Sec-Fetch-Site` at all. Fails closed when unconfigured. `next dev` pinned to `127.0.0.1` |
-| 2 | **High** | MCP server bound `0.0.0.0` and executed `/mcp` unauthenticated, so `rollback_deployment` was reachable directly — never passing through the harness, so never reaching the approval gate | Binds `127.0.0.1` by default; optional `OPS_MCP_TOKEN` bearer auth (constant-time compare); insecure posture logged at `error`; `/estate` CORS narrowed from `*` to known origins |
-| 3 | Medium | Optimistic approval removal left no retry path if the submission failed, stranding a run the harness was still blocking on | Snapshot before mutating, restore on failure — skipped if the call has since completed, to avoid a duplicate 422 |
-| 4 | Medium | `reset()` replaced state without invalidating the active stream, so a superseded run's events repopulated the fresh state | Generation token, incremented by `start()` and `reset()`; `consume` drops events from a stale generation |
-| 5 | Medium | `deployAnchor()` returned the fixture constant, so after a rollback the agent's change-point anchor pointed at a deployment no longer live | Derived from the live deployment; three regression tests |
-| 6 | Medium | `isEstateState()` validated only two top-level fields — `incidents: [null]` passed and crashed the render | Full leaf-level validation; 13 guard tests |
-
-Finding 2 is the one worth dwelling on. This project's entire thesis is that
-irreversible actions pause for a human — and the gate is enforced by the harness,
-not by the MCP server. So the gate protects a *path*, not a *tool*: anything
-reaching the MCP server directly never encounters it. Binding to all interfaces
-therefore didn't weaken the safety model, it offered a way around it entirely.
-See [docs/architecture.md § Trust model](docs/architecture.md#trust-model).
-
-Finding 1 took two rounds. The first attempt added a `Sec-Fetch-Site` origin
-check and documented caller authentication as out of scope — and Qodo did not
-mark it resolved, correctly: an origin check is not authentication, and my own
-guard explicitly allowed non-browser callers, so a local `curl` could still
-submit an approval. The operator token is the actual fix.
-
-### Verification after the fixes
-
-- 108 tests (66 MCP + 42 UI), up from 69 — every fix carries a regression test
-- `biome ci` clean, typecheck clean under `strict`, `next build` clean, `npm audit` 0 vulnerabilities
-- Every security fix verified at runtime, not just in tests:
-  - `/mcp` returns 401 with no token, 401 with a wrong one, 200 with the right one
-  - the MCP server refuses LAN connections while loopback works (`netstat` confirms it binds `127.0.0.1`, not `0.0.0.0`)
-  - the proxy returns 403 for cross-site and `same-site` mutations, and passes `same-origin` through
-  - a local `curl` POST — the exact vector finding 1 described — returns 403 without the operator token, 403 with a wrong one, and passes with the right one
-  - with `SENTINEL_UI_TOKEN` unset, mutations return 403 rather than being allowed through
-
-### Review process
-
-Substantive changes go through pull requests reviewed by Qodo before merge.
-High-severity findings are fixed rather than dismissed. Nothing in this section
-is a link to a review that did not happen.
-
-Running total across the reviewed PRs — **16 findings, 16 addressed, 0 dismissed**:
-
-| PR | Findings | Detail |
-|---|---|---|
-| [#1](https://github.com/PrinceXDev/sentinel-agent/pull/1) | 6 (2 High, 4 Medium) | Above |
-| [#4](https://github.com/PrinceXDev/sentinel-agent/pull/4) | 6 (2 High, 4 Medium), plus 2 self-found | [Gate Prover follow-up](#gate-prover-follow-up-what-qodo-found-in-the-suite-itself) |
-| [#6](https://github.com/PrinceXDev/sentinel-agent/pull/6) | 4 (3 High, 1 Medium) | [PR #6](#pr-6-what-qodo-found-in-the-bench-and-the-injection-probe) |
-
-One of the sixteen is fixed only in part: reviewer identity cannot be verified through MCP, so PR #6's
-finding 3 is closed by enforcing what is enforceable and stating the rest as a limitation rather than
-by claiming a guarantee that does not exist.
 
 ## Known limitations
 

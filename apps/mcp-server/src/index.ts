@@ -307,7 +307,7 @@ app.get('/estate/state', (_req, res) => {
 });
 
 /**
- * The agent's structured conclusions, and any independent audit of them.
+ * The agent's structured conclusions, and any second-opinion review of them.
  *
  * Separate from `/estate/state` because it answers a different question: state
  * is what the estate *is*, findings are what the agent *concluded about it*. The

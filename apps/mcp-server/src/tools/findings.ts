@@ -13,13 +13,18 @@
  * ## Why the audit is a separate tool
  *
  * `record_finding` is written by the investigating agent. `audit_finding` is
- * written by a different one, and the prompt for it deliberately withholds the
- * conclusion's *confidence* so the reviewer scores the evidence rather than
- * ratifying a number. Cleric's published result on their own product is that an
- * independent auditor grounded in evidence predicts the real outcome markedly
+ * meant to be written by a different one, and the prompt for it deliberately
+ * withholds the conclusion's *confidence* so the reviewer scores the evidence
+ * rather than ratifying a number. Cleric's published result on their own product
+ * is that an auditor grounded in evidence predicts the real outcome markedly
  * better than an agent scoring itself. sentinel-agent's confidence used to be
  * self-reported by the same model that formed the hypothesis, which is the
  * weakest arrangement available.
+ *
+ * The separation is a convention, not a guarantee: MCP calls carry no caller
+ * identity, so the server cannot confirm the reviewer is a different agent. An
+ * audit naming the investigating actor is refused and the record is stored with
+ * `identity_verified: false` — see `EstateStore.auditFinding`.
  *
  * The gap between the two numbers is the useful signal, and the store records it
  * as `confidence_delta`.
@@ -161,7 +166,7 @@ export const recordFinding = defineTool({
       // dispatch the reviewer, rather than proceeding to request approval on an
       // unreviewed conclusion.
       audit: null,
-      next: 'Dispatch an independent reviewer to call audit_finding before requesting approval.',
+      next: 'Dispatch a separate reviewer to call audit_finding before requesting approval.',
     });
   },
 });

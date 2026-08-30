@@ -3,7 +3,7 @@
 export const SITE_REPO_URL = 'https://github.com/PrinceXDev/sentinel-agent';
 
 export const NAV_LINKS = [
-  { href: '/product', label: 'Product' },
+  { href: '/', label: 'Product' },
   { href: '/docs', label: 'Docs' },
   { href: '/docs/tour', label: 'Tour' },
   { href: '/docs/gate-prover', label: 'Proof' },
@@ -13,8 +13,8 @@ export const FOOTER_COLUMNS = [
   {
     title: 'Product',
     links: [
-      { href: '/product', label: 'Overview' },
-      { href: '/', label: 'Operator console' },
+      { href: '/', label: 'Overview' },
+      { href: '/console', label: 'Operator console' },
       { href: '/docs/tools', label: 'MCP tool surface' },
       { href: '/docs/gate-prover', label: 'Gate Prover' },
     ],
@@ -41,7 +41,7 @@ export const FOOTER_COLUMNS = [
 
 export const FOOTER_BADGES = [
   'MIT licensed',
-  '149 tests',
+  '262 tests',
   '0 npm vulnerabilities',
-  '10/10 MCP tools annotated',
+  '13/13 MCP tools annotated',
 ];

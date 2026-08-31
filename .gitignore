@@ -53,3 +53,12 @@ npm-debug.log*
 probe-tmp.sh
 probe*-tmp.sh
 setup-tmp.log
+
+# Product film — generated media. The source (scripts, scenes) is committed;
+# the renders, captured footage and synthesised audio are not.
+video/node_modules/
+video/.venv/
+video/out/
+video/public/vo/
+video/public/audio/
+video/public/shots/

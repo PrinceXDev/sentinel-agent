@@ -1,0 +1,33 @@
+{
+  "name": "sentinel-agent-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cinematic product film for sentinel-agent, built with Remotion. The cut is derived from the narration's measured timing.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render HackathonFilm out/sentinel-agent.mp4 --concurrency=4",
+    "still": "remotion still HackathonFilm",
+    "typecheck": "tsc --noEmit",
+    "capture": "node scripts/capture-shots.mjs",
+    "capture:console": "node scripts/capture-console.mjs",
+    "vo": "node scripts/make-vo.mjs",
+    "score": "node scripts/make-audio.mjs",
+    "srt": "node scripts/make-srt.mjs",
+    "demo:run": "node scripts/demo-run.mjs",
+    "proxy:wsl": "node scripts/wsl-proxy.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.410",
+    "@remotion/google-fonts": "4.0.410",
+    "@remotion/media": "4.0.410",
+    "@remotion/shapes": "4.0.410",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.410"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "playwright": "1.62.1",
+    "typescript": "5.9.3"
+  }
+}

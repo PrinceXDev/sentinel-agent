@@ -60,7 +60,7 @@ This is an in-progress hackathon build. What is done, verified, and what is not:
 | Qodo review trail                                        | **In progress.** 16 findings across PRs #1, #4 and #6 — all addressed, none dismissed, plus 2 self-found |
 | Injection conformance probe (P5)                         | **Done.** Wired end to end; awaiting a live scored run        |
 | `npm run bench` — scores judgement against ground truth  | **Done.** Scorer unit-tested; awaiting a live scored run      |
-| Demo video                                               | **Not started**                                              |
+| Demo video                                               | **Done.** 6:49 Remotion film — [`video/`](video/). Narrated, and cut to one live end-to-end run |
 
 Nothing below claims a capability that has not been exercised. Where something is unverified, it says so.
 
@@ -477,6 +477,44 @@ There is no approval endpoint in TrueForge, and no approval id.
 4. On reload, `GET /turns/{turn_id}` → `state.required_actions` recovers what is still pending.
 
 Before any gated call the agent must state the action, target, evidence, expected effect, risk, reversibility, and confidence. The approver reads that and nothing else — the skill treats a thin case as a failure, because a reasonable approver will decline it.
+
+## Demo video
+
+A 6:49 product film lives in [`video/`](video/) — a Remotion project, so it is
+code-driven and re-renders deterministically rather than being a recording someone
+has to keep in sync by hand.
+
+```bash
+cd video
+npm install
+npm run studio     # preview
+npm run render     # → out/sentinel-agent.mp4 (1920x1080, 30fps)
+```
+
+Everything on screen is real. Product panels are screenshots of the deployed site;
+the terminal output is this repository's own `npm test`; the four Gate Prover
+verdicts are read from [`reports/gate-conformance.json`](reports/gate-conformance.json),
+including the two that are deliberately not a pass.
+
+The final act is **one live run**, recorded by `npm run demo:run` against a running
+harness and read back from the estate's own audit log:
+
+| | |
+| --- | --- |
+| Gated calls held, and approved by a human | 6 |
+| Subagent threads | 6 |
+| Evidence claims, each paired with its source | 10 |
+| Second opinion | 95% → auditor **72%** (`partially_supported`, 2 unsupported claims) → more evidence gathered → auditor **93%** (`supported`, 0) |
+| Remediation | `rollback_deployment` · `dpl-4c21` → `dpl-4c20` |
+| Verified recovery | p95 657.7ms → **177.6ms**, error rate 6.2% → **0.37%**, ~3 minutes |
+| Incident | **mitigated** |
+
+The cut is derived, not declared: [`video/scripts/narration.mjs`](video/scripts/narration.mjs)
+holds the script, `npm run vo` measures each spoken line into `src/timing.json`, and
+every scene reads its length from there — so a scene cannot drift out of sync with
+the sentence it illustrates. The score and the whole sound-effects kit are
+synthesised from code in `scripts/make-audio.mjs`; no sampled or licensed audio is
+used. Script with timecodes: [`video/NARRATION.md`](video/NARRATION.md).
 
 ## Local development
 
